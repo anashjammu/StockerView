@@ -1,0 +1,43 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { formatDateTimeInUserTimeZone, formatTimeInUserTimeZone, getUserTimeZone } from "@/lib/timezone";
+
+export function LocalTime({ value, variant = "time" }: { value: string; variant?: "time" | "dateTime" }) {
+  const [formatted, setFormatted] = useState("--:-- Local");
+
+  useEffect(() => {
+    setFormatted(variant === "dateTime" ? formatDateTimeInUserTimeZone(value) : formatTimeInUserTimeZone(value));
+  }, [value, variant]);
+
+  return <span>{formatted}</span>;
+}
+
+export function LocalTimezoneLabel() {
+  const [timezone, setTimezone] = useState("Local");
+
+  useEffect(() => {
+    setTimezone(getUserTimeZone());
+  }, []);
+
+  return <span>{timezone}</span>;
+}
+
+export function DataQualityLabel({
+  source = "Unavailable",
+  status = "unavailable",
+  delay = "N/A",
+  updatedAt = new Date().toISOString()
+}: {
+  source?: string;
+  status?: string;
+  delay?: string;
+  updatedAt?: string;
+}) {
+  return (
+    <span className="font-mono text-xs text-terminal-muted">
+      Source: {source} / Status: {status} / Delay: {delay} / Last updated: <LocalTime value={updatedAt} variant="dateTime" /> / Timezone:{" "}
+      <LocalTimezoneLabel />
+    </span>
+  );
+}

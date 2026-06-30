@@ -1,0 +1,21 @@
+export const serverEnv = {
+  fmpApiKey: process.env.FMP_API_KEY,
+  finnhubApiKey: process.env.FINNHUB_API_KEY,
+  fredApiKey: process.env.FRED_API_KEY,
+  marketauxApiKey: process.env.MARKETAUX_API_KEY ?? process.env.MARKETAUX_API_TOKEN,
+  gnewsApiKey: process.env.GNEWS_API_KEY,
+  alphaVantageApiKey: process.env.ALPHA_VANTAGE_API_KEY,
+  newsApiKey: process.env.NEWS_API_KEY,
+  alpacaApiKey: process.env.ALPACA_API_KEY,
+  alpacaSecretKey: process.env.ALPACA_SECRET_KEY,
+  twelveDataApiKey: process.env.TWELVE_DATA_API_KEY,
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  aiFeaturesEnabled: process.env.AI_FEATURES_ENABLED === "true",
+  cmeApiKey: process.env.CME_API_KEY,
+  barchartApiKey: process.env.BARCHART_API_KEY,
+  databentoApiKey: process.env.DATABENTO_API_KEY,
+  enableMockData: process.env.ENABLE_MOCK_DATA === "true",
+  yahooFinanceEnabled: process.env.YAHOO_FINANCE_ENABLED === "true",
+  stooqEnabled: process.env.STOOQ_ENABLED === "true",
+  tradingViewWidgetsEnabled: process.env.TRADINGVIEW_WIDGETS_ENABLED === "true"
+};
