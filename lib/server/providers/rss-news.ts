@@ -1,3 +1,5 @@
+import Parser from "rss-parser";
+
 export type RssSourceConfig = {
   id: string;
   name: string;
@@ -26,6 +28,12 @@ export type RawRssArticle = {
   provider: string;
 };
 
+const rssParser = new Parser<Record<string, unknown>, Record<string, unknown>>({
+  customFields: {
+    item: ["dc:creator", "content:encoded", "media:content", "guid"]
+  }
+});
+
 export function getMarketRssSources(): RssSourceConfig[] {
   return [
     { id: "cnbc-markets", name: "CNBC", url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", category: "Market", enabled: true },
@@ -45,12 +53,12 @@ export async function fetchRssMarketNews(range: string | undefined, limit: numbe
   for (const source of sources) {
     try {
       const response = await fetch(source.url, {
-        headers: { "User-Agent": "MarketPulse/1.0" },
+        headers: { "User-Agent": "StockerView/1.0" },
         next: { revalidate: 300 }
       });
       if (!response.ok) throw new Error(`http_${response.status}`);
       const xml = await response.text();
-      const rows = parseRssItems(xml, source).slice(0, limit);
+      const rows = (await parseRssItems(xml, source)).slice(0, limit);
       articles.push(...rows);
       health.push({ source: source.name, attempted: true, ok: true, returned: rows.length, accepted: rows.length });
     } catch (error) {
@@ -69,30 +77,33 @@ export function normalizeRssArticle(raw: RawRssArticle, sourceConfig?: RssSource
   };
 }
 
-function parseRssItems(xml: string, source: RssSourceConfig): RawRssArticle[] {
-  return Array.from(xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)).map((match) => {
-    const item = match[0];
-    const title = decodeXmlText(readXmlField(item, "title"));
-    const url = decodeXmlText(readXmlField(item, "link") || readXmlField(item, "guid"));
-    const pubDate = decodeXmlText(readXmlField(item, "pubDate") || readXmlField(item, "published") || readXmlField(item, "updated"));
-    const parsedDate = pubDate ? new Date(pubDate) : null;
-    return {
-      title,
-      url,
-      sourceName: source.name,
-      author: decodeXmlText(readXmlField(item, "author") || readXmlField(item, "dc:creator")) || undefined,
-      publishedAt: parsedDate && Number.isFinite(parsedDate.getTime()) ? parsedDate.toISOString() : "",
-      snippet: decodeXmlText(stripHtml(readXmlField(item, "description") || readXmlField(item, "content:encoded"))),
-      category: source.category,
-      provider: "RSS"
-    };
-  }).filter((article) => article.title && article.url && article.publishedAt);
+async function parseRssItems(xml: string, source: RssSourceConfig): Promise<RawRssArticle[]> {
+  const feed = await rssParser.parseString(xml);
+
+  return (feed.items ?? [])
+    .map((item) => {
+      const title = decodeXmlText(stringValue(item.title));
+      const url = decodeXmlText(stringValue(item.link) || stringValue(item.guid));
+      const pubDate = decodeXmlText(stringValue(item.isoDate) || stringValue(item.pubDate) || stringValue(item.published) || stringValue(item.updated));
+      const parsedDate = pubDate ? new Date(pubDate) : null;
+      const description = stringValue(item.contentSnippet) || stringValue(item.content) || stringValue(item.summary) || stringValue(item["content:encoded"]);
+
+      return {
+        title,
+        url,
+        sourceName: source.name,
+        author: decodeXmlText(stringValue(item.creator) || stringValue(item.author) || stringValue(item["dc:creator"])) || undefined,
+        publishedAt: parsedDate && Number.isFinite(parsedDate.getTime()) ? parsedDate.toISOString() : "",
+        snippet: decodeXmlText(stripHtml(description)),
+        category: source.category,
+        provider: "RSS"
+      };
+    })
+    .filter((article) => article.title && article.url && article.publishedAt);
 }
 
-function readXmlField(xml: string, field: string) {
-  const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = xml.match(new RegExp(`<${escapedField}[^>]*>([\\s\\S]*?)<\\/${escapedField}>`, "i"));
-  return match?.[1]?.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "").trim() ?? "";
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
 }
 
 function decodeXmlText(value: string) {

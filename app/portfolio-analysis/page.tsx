@@ -2,12 +2,12 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BarChart, DonutChart } from "@/components/Charts";
-import { DataTable, type Column } from "@/components/DataTable";
 import { AIInsight } from "@/components/AIInsight";
 import { InteractivePriceChart } from "@/components/InteractivePriceChart";
 import { DataQualityLabel } from "@/components/LocalTime";
 import { MetricCard } from "@/components/MetricCard";
 import { Panel } from "@/components/Panel";
+import { SortableDataTable, type SortableColumn } from "@/components/SortableDataTable";
 import { TerminalShell } from "@/components/TerminalShell";
 import { TickerLink } from "@/components/TickerLink";
 import { buildEmptyCandleSet } from "@/lib/chart-data";
@@ -37,12 +37,12 @@ const colors = ["#4de3ff", "#66f2a5", "#f6bd60", "#ff6b86", "#7dd3fc", "#facc15"
 
 const priceBook = buildPriceBook();
 
-const holdingColumns: Column<CalculatedHolding>[] = [
-  { key: "ticker", header: "Ticker", render: (row) => <TickerLink symbol={row.ticker} /> },
-  { key: "shares", header: "Shares", align: "right", render: (row) => row.shares.toLocaleString() },
-  { key: "averageCost", header: "Avg Cost", align: "right", render: (row) => formatCurrency(row.averageCost) },
-  { key: "price", header: "Price", align: "right", render: (row) => formatCurrency(row.price) },
-  { key: "positionValue", header: "Position Value", align: "right", render: (row) => formatCurrency(row.positionValue) },
+const holdingColumns: SortableColumn<CalculatedHolding>[] = [
+  { key: "ticker", header: "Ticker", render: (row) => <TickerLink symbol={row.ticker} />, sortValue: (row) => row.ticker },
+  { key: "shares", header: "Shares", align: "right", render: (row) => row.shares.toLocaleString(), sortValue: (row) => row.shares },
+  { key: "averageCost", header: "Avg Cost", align: "right", render: (row) => formatCurrency(row.averageCost), sortValue: (row) => row.averageCost },
+  { key: "price", header: "Price", align: "right", render: (row) => formatCurrency(row.price), sortValue: (row) => row.price },
+  { key: "positionValue", header: "Position Value", align: "right", render: (row) => formatCurrency(row.positionValue), sortValue: (row) => row.positionValue },
   {
     key: "gainLoss",
     header: "Gain/Loss",
@@ -51,11 +51,12 @@ const holdingColumns: Column<CalculatedHolding>[] = [
       <span className={row.gainLoss >= 0 ? "text-terminal-green" : "text-terminal-red"}>
         {formatCurrency(row.gainLoss)} / {formatPercent(row.gainLossPercent)}
       </span>
-    )
+    ),
+    sortValue: (row) => row.gainLoss
   },
-  { key: "allocation", header: "Allocation", align: "right", render: (row) => `${row.allocation.toFixed(1)}%` },
-  { key: "sector", header: "Sector", render: (row) => row.sector },
-  { key: "risk", header: "Risk", align: "right", render: (row) => <RiskPill risk={row.risk} /> }
+  { key: "allocation", header: "Allocation", align: "right", render: (row) => `${row.allocation.toFixed(1)}%`, sortValue: (row) => row.allocation },
+  { key: "sector", header: "Sector", render: (row) => row.sector, sortValue: (row) => row.sector },
+  { key: "risk", header: "Risk", align: "right", render: (row) => <RiskPill risk={row.risk} />, sortValue: (row) => row.risk }
 ];
 
 export default function PortfolioAnalysis() {
@@ -200,7 +201,7 @@ export default function PortfolioAnalysis() {
             <BarChart points={portfolio.sectorExposure} color="#f6bd60" suffix="%" />
           </Panel>
           <Panel title="Holdings" action={<span className="font-mono text-xs text-terminal-muted">{holdings.length} positions</span>}>
-            <DataTable columns={holdingColumns} rows={portfolio.calculatedHoldings} />
+            <SortableDataTable columns={holdingColumns} rows={portfolio.calculatedHoldings} defaultSortKey="positionValue" />
             <div className="mt-3 grid gap-2">
               {holdings.map((holding) => (
                 <div key={holding.id} className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.045] px-3 py-2 text-xs">

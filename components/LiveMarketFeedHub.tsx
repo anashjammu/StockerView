@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Fuse from "fuse.js";
 import { SimpleLocalTime } from "@/components/LocalTime";
 import { LiveMarketSearch } from "@/components/LiveMarketSearch";
 import { Panel } from "@/components/Panel";
@@ -428,10 +429,14 @@ function filterArticles(items: NewsItem[], filter: string, query: string) {
 
   if (!normalizedQuery) return filtered;
 
-  return filtered.filter((item) => {
-    const text = `${item.headline} ${item.sourceName} ${item.relatedTickers.join(" ")}`.toLowerCase();
-    return text.includes(normalizedQuery);
+  const fuse = new Fuse(filtered, {
+    keys: ["headline", "sourceName", "category", "relatedTickers"],
+    includeScore: true,
+    threshold: 0.45,
+    ignoreLocation: true
   });
+
+  return fuse.search(normalizedQuery).map((result) => result.item);
 }
 
 function articleCategories(item: NewsItem) {

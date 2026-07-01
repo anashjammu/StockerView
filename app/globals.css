@@ -3,34 +3,19 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark light;
-  background: #0f1115;
-  --app-bg: #0f1115;
-  --app-bg-soft: #141820;
-  --app-panel: #171c24;
-  --app-panel-muted: #1b212b;
-  --app-border: rgba(255, 255, 255, 0.10);
-  --app-border-strong: rgba(255, 255, 255, 0.16);
-  --app-text: #f3f5f8;
-  --app-muted: #a8b0bc;
-  --app-accent: #62b8d3;
+  color-scheme: light;
+  background: #f7f9fc;
+  --app-bg: #f7f9fc;
+  --app-bg-soft: #edf2f8;
+  --app-panel: #ffffff;
+  --app-panel-muted: #f8fbff;
+  --app-border: rgba(15, 23, 42, 0.10);
+  --app-border-strong: rgba(15, 23, 42, 0.16);
+  --app-text: #111827;
+  --app-muted: #5f6b7d;
+  --app-accent: #2f80a3;
   --font-geist-sans: Inter, "Geist Sans", "Aptos", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-geist-mono: "Geist Mono", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    background: #f6f7f9;
-    --app-bg: #f6f7f9;
-    --app-bg-soft: #eef1f4;
-    --app-panel: #ffffff;
-    --app-panel-muted: #fafbfc;
-    --app-border: rgba(15, 23, 42, 0.10);
-    --app-border-strong: rgba(15, 23, 42, 0.16);
-    --app-text: #10151f;
-    --app-muted: #5f6b7d;
-    --app-accent: #3d89a8;
-  }
 }
 
 * {
@@ -41,7 +26,7 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--app-accent) 10%, transparent), transparent 40rem),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--app-accent) 12%, white), transparent 42rem),
     linear-gradient(160deg, var(--app-bg) 0%, var(--app-bg-soft) 100%);
   color: var(--app-text);
   font-family: var(--font-geist-sans);
@@ -62,7 +47,7 @@ h3 {
 @layer components {
   .terminal-grid {
     background:
-      radial-gradient(circle at top left, color-mix(in srgb, var(--app-accent) 8%, transparent), transparent 34rem),
+      radial-gradient(circle at top right, color-mix(in srgb, var(--app-accent) 8%, white), transparent 36rem),
       linear-gradient(165deg, var(--app-bg) 0%, var(--app-bg-soft) 100%);
   }
 
@@ -72,8 +57,8 @@ h3 {
   }
 
   .glass-panel {
-    background: color-mix(in srgb, var(--app-panel) 86%, transparent);
-    backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--app-panel) 96%, transparent);
+    backdrop-filter: blur(8px);
   }
 
   .terminal-input {

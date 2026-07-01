@@ -2,13 +2,22 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { matchSorter } from "match-sorter";
 import { useRouter } from "next/navigation";
 import { searchSymbols } from "@/lib/ticker-service";
 
 export function LiveMarketSearch() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const suggestions = useMemo(() => searchSymbols(query).slice(0, 10), [query]);
+  const suggestions = useMemo(() => {
+    const base = searchSymbols(query);
+    if (!query.trim()) return base.slice(0, 10);
+
+    return matchSorter(base, query, {
+      keys: ["symbol", "name", "assetType"],
+      threshold: matchSorter.rankings.CONTAINS
+    }).slice(0, 10);
+  }, [query]);
 
   function submitSymbol(symbol: string) {
     const normalized = symbol.trim().toUpperCase();

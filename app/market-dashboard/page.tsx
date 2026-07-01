@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, HeatMap } from "@/components/Charts";
-import { DataTable, type Column } from "@/components/DataTable";
 import { AIInsight } from "@/components/AIInsight";
 import { DataQualityLabel } from "@/components/LocalTime";
 import { InteractivePriceChart } from "@/components/InteractivePriceChart";
 import { Panel } from "@/components/Panel";
+import { SortableDataTable, type SortableColumn } from "@/components/SortableDataTable";
 import { TerminalShell } from "@/components/TerminalShell";
 import { TickerLink } from "@/components/TickerLink";
 import { buildEmptyCandleSet, type ChartTimeframe, type OhlcvCandle } from "@/lib/chart-data";
@@ -26,10 +26,10 @@ const marketIndexes = [
   { displayName: "Dow Jones", displaySymbol: "DJI", providerSymbols: ["DJI", "^DJI", "DJIA"] }
 ];
 
-const columns: Column<MarketIndexTicker>[] = [
-  { key: "symbol", header: "Ticker", render: (row) => <TickerLink symbol={row.symbol} /> },
-  { key: "name", header: "Name", render: (row) => row.name },
-  { key: "price", header: "Last", align: "right", render: (row) => row.price.toFixed(2) },
+const columns: SortableColumn<MarketIndexTicker>[] = [
+  { key: "symbol", header: "Ticker", render: (row) => <TickerLink symbol={row.symbol} />, sortValue: (row) => row.symbol },
+  { key: "name", header: "Name", render: (row) => row.name, sortValue: (row) => row.name },
+  { key: "price", header: "Last", align: "right", render: (row) => row.price.toFixed(2), sortValue: (row) => row.price },
   {
     key: "change",
     header: "Chg %",
@@ -38,10 +38,17 @@ const columns: Column<MarketIndexTicker>[] = [
       <span className={row.change >= 0 ? "text-terminal-green" : "text-terminal-red"}>
         {formatChange(row.change)}
       </span>
-    )
+    ),
+    sortValue: (row) => row.change
   },
-  { key: "volume", header: "Volume", align: "right", render: (row) => row.volume },
-  { key: "sector", header: "Sector", render: (row) => row.sector }
+  {
+    key: "volume",
+    header: "Volume",
+    align: "right",
+    render: (row) => row.volume,
+    sortValue: (row) => Number(String(row.volume).replace(/,/g, "")) || 0
+  },
+  { key: "sector", header: "Sector", render: (row) => row.sector, sortValue: (row) => row.sector }
 ];
 
 export default function MarketDashboard() {
@@ -129,7 +136,7 @@ export default function MarketDashboard() {
         </Panel>
 
         <Panel title="Equity Monitor">
-          <DataTable columns={columns} rows={quotes} />
+          <SortableDataTable columns={columns} rows={quotes} defaultSortKey="price" />
         </Panel>
 
         <AIInsight title="Why Markets Are Moving" analysis={analysis} />

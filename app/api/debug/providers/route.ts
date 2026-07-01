@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getProviderJsonCacheStats } from "@/lib/provider-gateway";
 import { serverEnv } from "@/lib/server/env";
 
 type ProviderDebug = {
@@ -20,7 +21,7 @@ export async function GET() {
     testJson("twelveData", Boolean(serverEnv.twelveDataApiKey), `https://api.twelvedata.com/time_series?symbol=NVDA&interval=1day&outputsize=5&apikey=${serverEnv.twelveDataApiKey}`, (data) => Array.isArray(asRecord(data).values))
   ]);
 
-  return NextResponse.json({ fmp, finnhub, fred, marketaux, alphaVantage, twelveData });
+  return NextResponse.json({ fmp, finnhub, fred, marketaux, alphaVantage, twelveData, providerJsonCache: getProviderJsonCacheStats() });
 }
 
 async function testJson(name: string, keyPresent: boolean, url: string, hasUsableData: (data: unknown) => boolean): Promise<ProviderDebug> {

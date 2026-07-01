@@ -1,3 +1,5 @@
+import Keyv from "keyv";
+import { LRUCache } from "lru-cache";
 import type { ApiResponseStatus } from "@/lib/api-response";
 import { NEWS_TIMEZONE, classifyNewsArticle, formatLocalArticleTime, getLocalDateBucket, getRangeStart, normalizeArticleTimestamp } from "@/lib/news-classification";
 import { serverEnv } from "@/lib/server/env";
@@ -7,10 +9,43 @@ import { fetchRssMarketNews, type RawRssArticle } from "@/lib/server/providers/r
 
 const CACHE_SECONDS = 300;
 let providerHealthExtras: Record<string, unknown> = {};
+const providerResponseLru = new LRUCache<string, { data: unknown; httpStatus: number; keys: string[] }>({
+  max: 500,
+  ttl: CACHE_SECONDS * 1000
+});
+const providerResponseKeyv = new Keyv<{ data: unknown; httpStatus: number; keys: string[] }>({ namespace: "provider-json" });
+
+type ProviderCacheBucket = {
+  lruHits: number;
+  keyvHits: number;
+  misses: number;
+  networkFetches: number;
+  stores: number;
+  keyvErrors: number;
+};
+
+const providerJsonCacheStats = {
+  lruHits: 0,
+  keyvHits: 0,
+  misses: 0,
+  networkFetches: 0,
+  stores: 0,
+  keyvErrors: 0,
+  byProvider: {} as Record<string, ProviderCacheBucket>
+};
 
 export const providerCacheHeaders = {
   "Cache-Control": `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS}`
 };
+
+export function getProviderJsonCacheStats() {
+  return {
+    ...providerJsonCacheStats,
+    lruSize: providerResponseLru.size,
+    lruMax: 500,
+    ttlMs: CACHE_SECONDS * 1000
+  };
+}
 
 export type ProviderPayload<T> = {
   data: T | null;
@@ -1113,10 +1148,38 @@ async function fetchFredSeriesAttempt(route: string, seriesId: string): Promise<
 }
 
 async function providerJson(route: string, provider: string, query: string, url: string, headers?: HeadersInit) {
+  const providerBucket = ensureProviderCacheBucket(provider);
+  const cacheKey = providerJsonCacheKey(provider, query, url, headers);
+  const lruHit = providerResponseLru.get(cacheKey);
+  if (lruHit) {
+    providerJsonCacheStats.lruHits += 1;
+    providerBucket.lruHits += 1;
+    return lruHit;
+  }
+
+  try {
+    const keyvHit = await providerResponseKeyv.get(cacheKey);
+    if (keyvHit) {
+      providerJsonCacheStats.keyvHits += 1;
+      providerBucket.keyvHits += 1;
+      providerResponseLru.set(cacheKey, keyvHit);
+      return keyvHit;
+    }
+  } catch {
+    providerJsonCacheStats.keyvErrors += 1;
+    providerBucket.keyvErrors += 1;
+    // Keyv cache failures should never block provider calls.
+  }
+
+  providerJsonCacheStats.misses += 1;
+  providerBucket.misses += 1;
+
   let response: Response | null = null;
   let responseBody = "";
 
   try {
+    providerJsonCacheStats.networkFetches += 1;
+    providerBucket.networkFetches += 1;
     response = await fetch(url, { headers, next: { revalidate: CACHE_SECONDS } });
     responseBody = await response.text();
     const data = safeJsonParse(responseBody);
@@ -1127,12 +1190,38 @@ async function providerJson(route: string, provider: string, query: string, url:
       throw new Error(providerHttpError(response.status));
     }
 
-    return { data: data as any, httpStatus: response.status, keys };
+    const payload = { data: data as any, httpStatus: response.status, keys };
+    providerResponseLru.set(cacheKey, payload);
+    providerJsonCacheStats.stores += 1;
+    providerBucket.stores += 1;
+    void providerResponseKeyv.set(cacheKey, payload, CACHE_SECONDS * 1000).catch(() => undefined);
+    return payload;
   } catch (error) {
     const status = response?.status ?? "request_failed";
     console.error(`[${route}] provider=${provider} symbol=${query} endpoint=${provider} status=${status} url=${redactUrl(url)} body=${truncateResponseBody(responseBody)} reason=${safeError(error)}`);
     throw new Error(safeError(error));
   }
+}
+
+function ensureProviderCacheBucket(provider: string): ProviderCacheBucket {
+  if (!providerJsonCacheStats.byProvider[provider]) {
+    providerJsonCacheStats.byProvider[provider] = {
+      lruHits: 0,
+      keyvHits: 0,
+      misses: 0,
+      networkFetches: 0,
+      stores: 0,
+      keyvErrors: 0
+    };
+  }
+  return providerJsonCacheStats.byProvider[provider];
+}
+
+function providerJsonCacheKey(provider: string, query: string, url: string, headers?: HeadersInit) {
+  const headerSummary = headers
+    ? JSON.stringify(headers, (_key, value) => (typeof value === "string" ? value.replace(/(Bearer|token|apikey)\s+[^\s]+/gi, "$1 [REDACTED]") : value))
+    : "";
+  return `${provider}::${query}::${redactUrl(url)}::${headerSummary}`;
 }
 
 function safeJsonParse(body: string): any {

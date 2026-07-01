@@ -6,16 +6,16 @@ const config: Config = {
     extend: {
       colors: {
         terminal: {
-          bg: "#0f1115",
-          panel: "#171c24",
-          panel2: "#1b212b",
-          line: "#303744",
-          amber: "#d4a864",
-          cyan: "#62b8d3",
-          green: "#66b38d",
-          red: "#d17582",
-          text: "#f3f5f8",
-          muted: "#a8b0bc"
+          bg: "#f7f9fc",
+          panel: "#ffffff",
+          panel2: "#f8fbff",
+          line: "#d6deea",
+          amber: "#b87a1d",
+          cyan: "#2f80a3",
+          green: "#2f8a57",
+          red: "#b6495f",
+          text: "#111827",
+          muted: "#5f6b7d"
         }
       },
       fontFamily: {
@@ -23,7 +23,7 @@ const config: Config = {
         sans: ["var(--font-geist-sans)", "Inter", "ui-sans-serif", "system-ui", "sans-serif"]
       },
       boxShadow: {
-        glow: "0 20px 52px rgba(0,0,0,0.24)"
+        glow: "0 18px 38px rgba(15, 23, 42, 0.10)"
       }
     }
   },
