@@ -5,6 +5,8 @@
 :root {
   color-scheme: dark;
   background: #070b1a;
+  --font-geist-sans: Inter, "Geist Sans", "Aptos", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-geist-mono: "Geist Mono", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 * {
@@ -19,6 +21,15 @@ body {
     radial-gradient(circle at 80% 10%, rgba(110, 231, 183, 0.12), transparent 28rem),
     linear-gradient(135deg, #070b1a 0%, #0d1424 45%, #121827 100%);
   color: #f8fbff;
+  font-family: var(--font-geist-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+  text-rendering: geometricPrecision;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
 }
 
 ::selection {
@@ -55,6 +66,7 @@ body {
     color: #f8fbff;
     outline: none;
     transition: border-color 160ms ease;
+    font-variant-numeric: tabular-nums;
   }
 
   .terminal-input::placeholder {

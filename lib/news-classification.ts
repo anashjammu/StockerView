@@ -89,6 +89,54 @@ export function formatLocalArticleTime(value: string, timezone = NEWS_TIMEZONE) 
   }).format(new Date(value));
 }
 
+export function normalizeArticleTimestamp(rawPublishedAt: unknown, providerName = "Provider") {
+  const parsed = parseProviderTimestamp(rawPublishedAt);
+  const now = new Date();
+
+  if (!parsed || !Number.isFinite(parsed.getTime())) {
+    return {
+      publishedAtUtc: now.toISOString(),
+      publishedLocalTime: "",
+      timestampValid: false,
+      timestampSource: providerName,
+      timestampWarning: "Missing or invalid provider timestamp"
+    };
+  }
+
+  if (parsed.getTime() > now.getTime() + 5 * 60 * 1000) {
+    return {
+      publishedAtUtc: now.toISOString(),
+      publishedLocalTime: "",
+      timestampValid: false,
+      timestampSource: providerName,
+      timestampWarning: "Provider timestamp is in the future"
+    };
+  }
+
+  return {
+    publishedAtUtc: parsed.toISOString(),
+    publishedLocalTime: formatLocalArticleTime(parsed.toISOString(), NEWS_TIMEZONE),
+    timestampValid: true,
+    timestampSource: providerName
+  };
+}
+
+function parseProviderTimestamp(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value < 10_000_000_000 ? value * 1000 : value);
+  }
+
+  if (typeof value !== "string" || !value.trim()) return null;
+  const raw = value.trim();
+  if (/^\d+$/.test(raw)) {
+    const numeric = Number(raw);
+    return new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric);
+  }
+
+  const parsed = new Date(raw);
+  return parsed;
+}
+
 function startOfLocalDay(date: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,

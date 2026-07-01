@@ -37,6 +37,8 @@ export type NewsItem = {
   sentiment?: NewsSentiment;
   impactLevel?: NewsImpact;
   whyItMatters?: string;
+  timestampValid?: boolean;
+  timestampWarning?: string;
 };
 
 export type MarketNewsItem = {
@@ -56,6 +58,8 @@ export type MarketNewsItem = {
   sentiment?: NewsSentiment;
   impact?: NewsImpact;
   whyItMatters?: string;
+  timestampValid?: boolean;
+  timestampWarning?: string;
 };
 
 export type EconomicCalendarItem = {
@@ -188,7 +192,9 @@ export function normalizeFeedItem(rawItem: MarketNewsItem): NewsItem {
     snippet: rawItem.snippet,
     sentiment: rawItem.sentiment,
     impactLevel: rawItem.impact,
-    whyItMatters: rawItem.whyItMatters
+    whyItMatters: rawItem.whyItMatters,
+    timestampValid: rawItem.timestampValid,
+    timestampWarning: rawItem.timestampWarning
   };
 }
 
@@ -217,7 +223,9 @@ function articleToMarketNewsItem(article: NormalizedNewsArticle): MarketNewsItem
     snippet: article.snippet,
     sentiment: normalizeSentiment(article.sentiment),
     impact: normalizeImpact(article.impactLevel),
-    whyItMatters: "This article may affect market tone, sector sentiment, or ticker-specific research context."
+    whyItMatters: "This article may affect market tone, sector sentiment, or ticker-specific research context.",
+    timestampValid: article.timestampValid,
+    timestampWarning: article.timestampWarning
   };
 }
 

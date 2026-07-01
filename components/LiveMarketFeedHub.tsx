@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DataTable, type Column } from "@/components/DataTable";
-import { DataQualityLabel, LocalTime } from "@/components/LocalTime";
+import { DataQualityLabel, SimpleLocalTime } from "@/components/LocalTime";
 import { LiveMarketSearch } from "@/components/LiveMarketSearch";
 import { Panel } from "@/components/Panel";
 import { TickerLink } from "@/components/TickerLink";
@@ -24,7 +24,7 @@ type NewsStatus = {
 };
 
 const calendarColumns: Column<EconomicCalendarItem>[] = [
-  { key: "time", header: "Time", render: (row) => <span className="text-terminal-cyan"><LocalTime value={row.time} /></span> },
+  { key: "time", header: "Time", render: (row) => <span className="text-terminal-cyan"><SimpleLocalTime value={row.time} /></span> },
   { key: "event", header: "Event", render: (row) => row.event },
   { key: "previous", header: "Previous", align: "right", render: (row) => row.previous },
   { key: "forecast", header: "Forecast", align: "right", render: (row) => row.forecast },
@@ -140,7 +140,7 @@ export function LiveMarketFeedHub({
       ) : null}
 
       {activeTab === "Articles" ? (
-        <Panel title="Articles" action={<NewsStatusLine status={statusState} loading={loadingNews} />}>
+        <Panel title="Articles" action={<span className="text-xs text-terminal-muted">Latest market-related articles</span>}>
           <div className="grid gap-3">
             <FilterBar items={articleFilters} value={articleFilter} onChange={setArticleFilter} />
             <FilterBar items={rangeFilters} value={dateRange} onChange={setDateRange} />
@@ -151,14 +151,14 @@ export function LiveMarketFeedHub({
               className="terminal-input"
             />
             <div className="grid gap-3 lg:grid-cols-2">
-              {filteredArticles.length ? <GroupedArticles items={filteredArticles} range={dateRange} /> : <EmptyState message="No articles found" />}
+              {filteredArticles.length ? <GroupedArticles items={filteredArticles} range={dateRange} /> : <EmptyState message={loadingNews ? "Loading latest articles..." : "No articles found"} />}
             </div>
           </div>
         </Panel>
       ) : null}
 
       {activeTab === "Calendar" ? (
-        <Panel title="Economic Calendar" action={<span className="font-mono text-xs text-terminal-muted">Times shown in your local timezone</span>}>
+        <Panel title="Economic Calendar">
           <DataTable columns={calendarColumns} rows={calendarItems} />
         </Panel>
       ) : null}
@@ -171,7 +171,7 @@ function BreakingNewsStrip({ item }: { item: NewsItem }) {
     <div className="rounded-xl border border-terminal-red/20 bg-white/[0.06] p-3">
       <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
         <span className="rounded-md border border-terminal-red/25 bg-white/[0.045] px-3 py-1 uppercase tracking-[0.12em] text-terminal-red">Breaking</span>
-        <LocalTime value={item.publishedAt} />
+        <SimpleLocalTime value={item.publishedAt} timestampValid={item.timestampValid} />
         <span className="text-terminal-muted">{item.sourceName}</span>
         <TickerList symbols={item.relatedTickers} />
       </div>
@@ -211,7 +211,7 @@ function ToneList({ title, items }: { title: string; items: string[] }) {
 function FeedRow({ item }: { item: NewsItem }) {
   return (
     <div className="grid gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-3 text-xs xl:grid-cols-[90px_1fr_120px_140px_120px_90px] xl:items-center">
-      <span className="font-mono text-terminal-cyan"><LocalTime value={item.publishedAt} /></span>
+      <span className="font-mono text-terminal-cyan"><SimpleLocalTime value={item.publishedAt} timestampValid={item.timestampValid} /></span>
       <div>
         <div className="text-sm font-medium text-terminal-text">{item.headline}</div>
         <details className="mt-1 text-terminal-muted">
@@ -247,15 +247,14 @@ function ArticleCard({ item }: { item: NewsItem }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.045] p-4">
       <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-terminal-muted">
-        <LocalTime value={item.publishedAt} />
-        <span>/</span>
+        <SimpleLocalTime value={item.publishedAt} timestampValid={item.timestampValid} />
+        <span aria-hidden="true">·</span>
         <span>{item.sourceName}</span>
-        {item.author ? <span>/ {item.author}</span> : null}
-        {item.sentiment ? <SentimentPill sentiment={item.sentiment} /> : null}
+        <span aria-hidden="true">·</span>
+        <span>{item.category}</span>
       </div>
-      <h3 className="mt-3 text-base font-semibold leading-6 text-terminal-text">{item.headline}</h3>
-      <p className="mt-2 text-sm leading-6 text-terminal-muted">{item.snippet}</p>
-      <p className="mt-2 text-xs leading-5 text-terminal-text">Why this matters: {item.whyItMatters}</p>
+      <h3 className="mt-3 text-[1.02rem] font-semibold leading-6 tracking-[-0.01em] text-terminal-text">{item.headline}</h3>
+      {item.snippet ? <p className="mt-2 text-sm leading-6 text-terminal-muted">{item.snippet}</p> : null}
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
         <TickerList symbols={item.relatedTickers} />
         <a href={item.url} target="_blank" rel="noreferrer" className="rounded-lg border border-terminal-cyan/25 px-3 py-1.5 text-terminal-cyan transition hover:border-terminal-cyan/50">
@@ -304,12 +303,7 @@ function FilterBar({ items, value, onChange }: { items: string[]; value: string;
 function NewsStatusLine({ status, loading }: { status: NewsStatus; loading: boolean }) {
   if (loading) return <span className="font-mono text-xs text-terminal-cyan">Loading latest articles...</span>;
   if (!status.count) return <span className="font-mono text-xs text-terminal-amber">News unavailable</span>;
-
-  return (
-    <span className="font-mono text-xs text-terminal-muted">
-      Source: {status.source} / Status: {status.status} / Range: {status.range} / Articles: {status.count} / Updated: <LocalTime value={status.updatedAt} />
-    </span>
-  );
+  return <span className="text-xs text-terminal-muted">Latest market-related updates</span>;
 }
 
 function apiArticleToNewsItem(article: {
@@ -329,6 +323,8 @@ function apiArticleToNewsItem(article: {
   sentiment?: string;
   impactLevel?: string;
   snippet?: string;
+  timestampValid?: boolean;
+  timestampWarning?: string;
 }): NewsItem {
   return {
     id: article.id ?? article.url ?? article.headline ?? crypto.randomUUID(),
@@ -347,7 +343,9 @@ function apiArticleToNewsItem(article: {
     snippet: article.snippet ?? "",
     sentiment: normalizeSentiment(article.sentiment),
     impactLevel: normalizeImpact(article.impactLevel),
-    whyItMatters: "This real article may affect market tone, sector sentiment, or ticker-specific research context."
+    whyItMatters: "This real article may affect market tone, sector sentiment, or ticker-specific research context.",
+    timestampValid: article.timestampValid,
+    timestampWarning: article.timestampWarning
   };
 }
 
@@ -413,6 +411,7 @@ function rangeParam(range: string) {
 }
 
 function TickerList({ symbols }: { symbols: string[] }) {
+  if (!symbols.length) return null;
   return (
     <span className="inline-flex flex-wrap gap-x-1.5 gap-y-1">
       {symbols.map((symbol, index) => (
@@ -500,8 +499,9 @@ function bucketFromDate(value: string) {
 }
 
 function localDayKey(date: Date) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Los_Angeles",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit"

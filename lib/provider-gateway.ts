@@ -1,5 +1,5 @@
 import type { ApiResponseStatus } from "@/lib/api-response";
-import { NEWS_TIMEZONE, classifyNewsArticle, formatLocalArticleTime, getLocalDateBucket, getRangeStart } from "@/lib/news-classification";
+import { NEWS_TIMEZONE, classifyNewsArticle, formatLocalArticleTime, getLocalDateBucket, getRangeStart, normalizeArticleTimestamp } from "@/lib/news-classification";
 import { serverEnv } from "@/lib/server/env";
 import { readCachedNews, saveRealNewsToCache } from "@/lib/server/news-cache";
 import { fetchNewsApiMarketNews, type RawNewsApiArticle } from "@/lib/server/providers/newsapi";
@@ -42,6 +42,17 @@ export type NewsProviderDebugMeta = {
   newestArticleAt: string | null;
   oldestArticleAt: string | null;
   cacheUsed: boolean;
+  tickerIdentity?: TickerIdentity;
+  totalFetched?: number;
+  totalAfterTickerFilter?: number;
+  rejectedAsUnrelatedCount?: number;
+  rejectedIncidentalMentionCount?: number;
+  rejectedProviderTagWithoutTopicRelevanceCount?: number;
+  rejectedTitleAboutOtherCompanyCount?: number;
+  rejectedSnippetOnlyUnrelatedTitleCount?: number;
+  rejectedWeakMatchBelowThresholdCount?: number;
+  acceptedSamples?: Array<{ title: string; source: string; score: number; reasons: string[] }>;
+  rejectedSamples?: Array<{ title: string; source: string; score: number; reasons: string[] }>;
 };
 
 export type NormalizedQuote = {
@@ -81,6 +92,7 @@ export type NewsRequest = {
   range?: string;
   limit?: number;
   query?: string;
+  timezone?: string;
 };
 
 export type NormalizedProfile = {
@@ -119,6 +131,42 @@ export type NormalizedNewsArticle = {
   firstSeenAt?: string;
   lastSeenAt?: string;
   originalProvider?: string;
+  timestampValid?: boolean;
+  timestampSource?: string;
+  timestampWarning?: string;
+  tickerMatchScore?: number;
+  tickerMatchReasons?: string[];
+};
+
+export type TickerIdentity = {
+  symbol: string;
+  normalizedSymbol: string;
+  companyName: string;
+  shortName: string;
+  assetType: string;
+  exchange: string;
+  sector: string;
+  industry: string;
+  aliases: string[];
+  isEtf: boolean;
+  isIndex: boolean;
+};
+
+export type TickerArticleMatch = {
+  matched: boolean;
+  score: number;
+  matchedTickers: string[];
+  relatedTickers: string[];
+  reasons: string[];
+};
+
+export type ArticleSubjectDetection = {
+  primaryCompanyName: string | null;
+  primaryTicker: string | null;
+  titleMentionsCompanies: string[];
+  titleMentionsPageTicker: boolean;
+  titleMentionsOtherCompany: boolean;
+  reasons: string[];
 };
 
 export type NewsTraceArticle = {
@@ -296,13 +344,92 @@ export async function fetchRealMarketNews(request: NewsRequest = {}): Promise<Pr
 
 export async function fetchRealTickerNews(symbol: string, request: NewsRequest = {}): Promise<ProviderPayload<NormalizedNewsArticle[]>> {
   const route = `api/news/ticker/${symbol}`;
+  const identity = await getTickerIdentity(symbol);
   const tickerQueries = tickerNewsQueries(symbol);
-  return fetchMergedNews(route, [
+  const payload = await fetchMergedNews(route, [
     () => fetchMarketauxNews(route, symbol, request),
     () => fetchFinnhubTickerNews(route, symbol, request),
     () => fetchAlphaVantageNews(route, request, symbol),
     ...tickerQueries.map((query) => () => fetchGNews(route, { ...request, query }))
-  ], request);
+  ], { ...request, limit: 100 });
+  const articles = payload.data ?? [];
+  const acceptedSamples: NonNullable<NewsProviderDebugMeta["acceptedSamples"]> = [];
+  const rejectedSamples: NonNullable<NewsProviderDebugMeta["rejectedSamples"]> = [];
+  let rejectedIncidentalMentionCount = 0;
+  let rejectedProviderTagWithoutTopicRelevanceCount = 0;
+  let rejectedTitleAboutOtherCompanyCount = 0;
+  let rejectedSnippetOnlyUnrelatedTitleCount = 0;
+  let rejectedWeakMatchBelowThresholdCount = 0;
+  const matched = articles
+    .map((article) => {
+      const match = matchArticleToTicker(article, identity);
+      const sample = { title: article.title, source: article.sourceName, score: match.score, reasons: match.reasons };
+      if (match.matched) acceptedSamples.push(sample);
+      else {
+        if (match.reasons.includes("incidental_or_promotional_mention")) rejectedIncidentalMentionCount += 1;
+        if (match.reasons.includes("provider_tag_without_topic_relevance")) rejectedProviderTagWithoutTopicRelevanceCount += 1;
+        if (match.reasons.includes("title_about_other_company")) rejectedTitleAboutOtherCompanyCount += 1;
+        if (match.reasons.includes("snippet_only_unrelated_title")) rejectedSnippetOnlyUnrelatedTitleCount += 1;
+        if (match.reasons.includes("weak_match_below_threshold")) rejectedWeakMatchBelowThresholdCount += 1;
+        rejectedSamples.push(sample);
+      }
+      return {
+        article: {
+          ...article,
+          relatedTickers: Array.from(new Set([identity.normalizedSymbol, ...match.relatedTickers])).filter(Boolean),
+          tickerMatchScore: match.score,
+          tickerMatchReasons: match.reasons
+        },
+        match
+      };
+    })
+    .filter(({ match }) => match.matched)
+    .map(({ article }) => article)
+    .sort(sortNewsNewestFirst);
+
+  if (!matched.length) {
+    return {
+      data: [],
+      source: payload.source,
+      status: payload.status === "unavailable" ? "unavailable" : "partial",
+      delay: payload.delay,
+      updatedAt: payload.updatedAt,
+      error: "No ticker-specific articles available right now.",
+      meta: {
+        ...(payload.meta ?? emptyNewsMeta()),
+        tickerIdentity: identity,
+        totalFetched: articles.length,
+        totalAfterTickerFilter: 0,
+        rejectedAsUnrelatedCount: articles.length,
+        rejectedIncidentalMentionCount,
+        rejectedProviderTagWithoutTopicRelevanceCount,
+        rejectedTitleAboutOtherCompanyCount,
+        rejectedSnippetOnlyUnrelatedTitleCount,
+        rejectedWeakMatchBelowThresholdCount,
+        acceptedSamples: [],
+        rejectedSamples: rejectedSamples.slice(0, 8)
+      }
+    };
+  }
+
+  return {
+    ...payload,
+    data: matched,
+    meta: {
+      ...(payload.meta ?? emptyNewsMeta()),
+      tickerIdentity: identity,
+      totalFetched: articles.length,
+      totalAfterTickerFilter: matched.length,
+      rejectedAsUnrelatedCount: articles.length - matched.length,
+      rejectedIncidentalMentionCount,
+      rejectedProviderTagWithoutTopicRelevanceCount,
+      rejectedTitleAboutOtherCompanyCount,
+      rejectedSnippetOnlyUnrelatedTitleCount,
+      rejectedWeakMatchBelowThresholdCount,
+      acceptedSamples: acceptedSamples.slice(0, 8),
+      rejectedSamples: rejectedSamples.slice(0, 8)
+    }
+  };
 }
 
 export async function traceMissingMarketNews(): Promise<NewsTraceReport> {
@@ -400,7 +527,7 @@ async function fetchMergedNews(
   request: NewsRequest
 ): Promise<ProviderPayload<NormalizedNewsArticle[]>> {
   const limit = newsLimit(request.limit);
-  const rangeStart = newsRangeStart(request.range);
+  const rangeStart = getRangeStart(request.range, request.timezone || NEWS_TIMEZONE);
   const errors: string[] = [];
   const sources = new Set<string>();
   const providerCounts: Record<string, number> = {};
@@ -1134,14 +1261,19 @@ function normalizeNewsApiProviderArticle(row: RawNewsApiArticle): NormalizedNews
 }
 
 function enrichNewsArticle(article: Omit<NormalizedNewsArticle, "publishedLocalTime" | "localDateBucket" | "primaryCategory" | "categories">): NormalizedNewsArticle {
-  const classification = classifyNewsArticle(article);
+  const timestamp = normalizeArticleTimestamp(article.publishedAt, article.provider ?? article.sourceName);
+  const timestampedArticle = { ...article, publishedAt: timestamp.publishedAtUtc };
+  const classification = classifyNewsArticle(timestampedArticle);
   return {
-    ...article,
+    ...timestampedArticle,
     category: classification.primaryCategory,
     primaryCategory: classification.primaryCategory,
     categories: classification.categories,
-    publishedLocalTime: formatLocalArticleTime(article.publishedAt, NEWS_TIMEZONE),
-    localDateBucket: getLocalDateBucket(article.publishedAt, NEWS_TIMEZONE)
+    publishedLocalTime: timestamp.publishedLocalTime || formatLocalArticleTime(timestamp.publishedAtUtc, NEWS_TIMEZONE),
+    localDateBucket: getLocalDateBucket(timestamp.publishedAtUtc, NEWS_TIMEZONE),
+    timestampValid: timestamp.timestampValid,
+    timestampSource: timestamp.timestampSource,
+    timestampWarning: timestamp.timestampWarning
   };
 }
 
@@ -1342,6 +1474,435 @@ function isMarketRelevantArticle(article: NormalizedNewsArticle) {
   return marketRelevanceKeywords.some((keyword) => keywordMatches(text, keyword));
 }
 
+export async function getTickerIdentity(symbol: string): Promise<TickerIdentity> {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const profile = await fetchRealProfile(normalizedSymbol).catch(() => null);
+  const profileData = profile?.data;
+  const fallback = fallbackTickerIdentity[normalizedSymbol];
+  const companyName = profileData?.companyName || profileData?.name || fallback?.companyName || normalizedSymbol;
+  const assetType = fallback?.assetType ?? inferAssetType(normalizedSymbol, companyName);
+  const shortName = cleanCompanyName(companyName);
+  const aliases = buildTickerAliases(normalizedSymbol, companyName, fallback?.aliases ?? []);
+
+  return {
+    symbol: normalizedSymbol,
+    normalizedSymbol,
+    companyName,
+    shortName,
+    assetType,
+    exchange: profileData?.exchange || fallback?.exchange || "",
+    sector: profileData?.sector || fallback?.sector || "",
+    industry: profileData?.industry || fallback?.industry || "",
+    aliases,
+    isEtf: assetType.toLowerCase() === "etf" || /\b(etf|trust|fund)\b/i.test(companyName),
+    isIndex: assetType.toLowerCase() === "index"
+  };
+}
+
+export function matchArticleToTicker(article: NormalizedNewsArticle, identity: TickerIdentity): TickerArticleMatch {
+  const title = article.title || article.headline;
+  const snippet = article.snippet ?? "";
+  const category = `${article.category} ${article.primaryCategory} ${article.categories.join(" ")}`;
+  const providerTickers = article.relatedTickers.map((ticker) => ticker.toUpperCase());
+  const reasons: string[] = [];
+  let score = 0;
+  const providerMetadataMatch = providerTickers.includes(identity.normalizedSymbol) && hasTrustedTickerMetadata(article);
+  const trueCompanyNewsEndpoint = isTrueCompanyNewsEndpoint(article, identity);
+  const titleDirectMatch = tickerSymbolMatches(title, identity.normalizedSymbol);
+  const titleFullCompanyMatch = textContainsPhrase(title, identity.companyName);
+  const titleAlias = identity.aliases.find((alias) => alias.toUpperCase() !== identity.normalizedSymbol && !isWeakTickerAlias(alias) && textContainsPhrase(title, alias));
+  const titleStrongAlias = identity.aliases.find((alias) => alias.toUpperCase() !== identity.normalizedSymbol && isStrongTickerAlias(alias, identity) && textContainsPhrase(title, alias));
+  const titleHasDirectCompanyMatch = titleDirectMatch || titleFullCompanyMatch || Boolean(titleAlias);
+  const titleIndustryAligned = isIndustryAlignedTitle(title, category, identity);
+  const incidental = isIncidentalTickerMention(article, identity);
+  const subject = detectPrimaryArticleSubject(article, identity);
+  const titleOtherCompany = subject.titleMentionsOtherCompany;
+  const snippetStrongIdentity = snippetMentionsIdentity(snippet, identity);
+  const weakRssOrYahooMetadataOnly = isWeakRssOrYahooArticle(article) && providerTickers.includes(identity.normalizedSymbol) && !titleHasDirectCompanyMatch && !(titleIndustryAligned && snippetStrongIdentity);
+
+  if (trueCompanyNewsEndpoint) {
+    score += 120;
+    reasons.push("true_company_news_endpoint");
+  }
+
+  if (titleDirectMatch) {
+    score += 110;
+    reasons.push("title contains exact ticker");
+  }
+  if (titleFullCompanyMatch) {
+    score += 100;
+    reasons.push("title contains full company name");
+  }
+
+  if (titleAlias) {
+    score += titleStrongAlias === titleAlias ? 95 : 90;
+    reasons.push(`title contains alias: ${titleAlias}`);
+  }
+
+  if (providerMetadataMatch && !titleOtherCompany && (titleHasDirectCompanyMatch || titleIndustryAligned || trueCompanyNewsEndpoint)) {
+    score += 50;
+    reasons.push("provider metadata supports topic match");
+  } else if (providerTickers.includes(identity.normalizedSymbol) && !titleHasDirectCompanyMatch && !titleIndustryAligned && !trueCompanyNewsEndpoint) {
+    score -= 100;
+    reasons.push("provider_tag_without_topic_relevance");
+  }
+
+  if (titleIndustryAligned && textContainsPhrase(snippet, identity.companyName)) {
+    score += 60;
+    reasons.push("snippet contains company name with industry-aligned title");
+  }
+
+  if (titleIndustryAligned && tickerSymbolMatches(snippet, identity.normalizedSymbol)) {
+    score += 50;
+    reasons.push("snippet contains ticker with industry-aligned title");
+  }
+
+  if (!titleHasDirectCompanyMatch && !titleIndustryAligned && snippetStrongIdentity) {
+    score -= 70;
+    reasons.push("snippet_only_unrelated_title");
+  }
+
+  if (titleOtherCompany && !titleHasDirectCompanyMatch) {
+    score -= 120;
+    reasons.push("title_about_other_company");
+  }
+
+  if (incidental) {
+    score -= 90;
+    reasons.push("incidental_or_promotional_mention");
+  }
+
+  if (weakRssOrYahooMetadataOnly) {
+    score -= 100;
+    if (!reasons.includes("provider_tag_without_topic_relevance")) reasons.push("provider_tag_without_topic_relevance");
+  }
+
+  if (!titleHasDirectCompanyMatch && !providerMetadataMatch && !titleIndustryAligned) {
+    reasons.push("no_provider_or_title_match");
+  }
+
+  const etfOrIndexMarketMatch = (identity.isEtf || identity.isIndex) && titleIndustryAligned && !incidental && !titleOtherCompany;
+  const matched =
+    (trueCompanyNewsEndpoint && (!titleOtherCompany || titleHasDirectCompanyMatch)) ||
+    (titleHasDirectCompanyMatch && !incidental && !titleOtherCompany) ||
+    etfOrIndexMarketMatch ||
+    score >= 90;
+
+  if (!matched && !reasons.some((reason) => reason.includes("provider_tag_without_topic_relevance") || reason.includes("title_about_other_company") || reason.includes("snippet_only_unrelated_title") || reason.includes("incidental_or_promotional_mention"))) {
+    reasons.push("weak_match_below_threshold");
+  }
+  if (!reasons.length) reasons.push("no strong ticker or company identity match");
+
+  return {
+    matched,
+    score,
+    matchedTickers: matched ? [identity.normalizedSymbol] : [],
+    relatedTickers: matched ? [identity.normalizedSymbol] : [],
+    reasons
+  };
+}
+
+export function detectPrimaryArticleSubject(article: NormalizedNewsArticle, identity: TickerIdentity): ArticleSubjectDetection {
+  const title = article.title || article.headline;
+  const reasons: string[] = [];
+  const pageTitleMatch =
+    tickerSymbolMatches(title, identity.normalizedSymbol) ||
+    textContainsPhrase(title, identity.companyName) ||
+    identity.aliases.some((alias) => alias.toUpperCase() !== identity.normalizedSymbol && !isWeakTickerAlias(alias) && textContainsPhrase(title, alias));
+  const titleMentionsCompanies: string[] = [];
+  let primaryCompanyName: string | null = null;
+  let primaryTicker: string | null = null;
+
+  for (const [symbol, other] of Object.entries(fallbackTickerIdentity)) {
+    const otherName = other.companyName ?? "";
+    const otherAliases = [otherName, cleanCompanyName(otherName), ...(other.aliases ?? [])].filter(Boolean);
+    const matchesOther = tickerSymbolMatches(title, symbol) || otherAliases.some((alias) => textContainsPhrase(title, alias));
+    if (!matchesOther) continue;
+    titleMentionsCompanies.push(symbol);
+    if (!primaryTicker) {
+      primaryTicker = symbol;
+      primaryCompanyName = otherName || symbol;
+    }
+  }
+
+  if (pageTitleMatch) {
+    reasons.push("title_mentions_page_ticker");
+    if (!primaryTicker) {
+      primaryTicker = identity.normalizedSymbol;
+      primaryCompanyName = identity.companyName;
+    }
+  }
+
+  const detectedOtherSubject = pageTitleMatch ? null : detectOtherCompanySubjectFromTitle(title, identity);
+  if (detectedOtherSubject) {
+    titleMentionsCompanies.push(detectedOtherSubject);
+    primaryCompanyName = primaryCompanyName ?? detectedOtherSubject;
+    reasons.push(`title_subject_other_company:${detectedOtherSubject}`);
+  }
+
+  const titleMentionsOtherCompany = (titleMentionsCompanies.some((symbol) => symbol !== identity.normalizedSymbol) || Boolean(detectedOtherSubject)) && !pageTitleMatch;
+  if (titleMentionsOtherCompany) reasons.push("title_mentions_other_company_without_page_ticker");
+
+  return {
+    primaryCompanyName,
+    primaryTicker,
+    titleMentionsCompanies,
+    titleMentionsPageTicker: pageTitleMatch,
+    titleMentionsOtherCompany,
+    reasons
+  };
+}
+
+function detectOtherCompanySubjectFromTitle(title: string, identity: TickerIdentity) {
+  const cleanedTitle = title.replace(/[’']/g, "'");
+  const knownOther = knownOtherCompanySubjects.find((name) => textContainsPhrase(cleanedTitle, name) && !identity.aliases.some((alias) => textContainsPhrase(cleanedTitle, alias)));
+  if (knownOther) return knownOther;
+
+  const subjectPatterns = [
+    /\b(?:why|how|is|are|should|could|will|time to|what's going on with|here's why)\s+([A-Z][A-Za-z0-9&.\-]*(?:\s+[A-Z][A-Za-z0-9&.\-]*){0,3})\s+(?:stock|shares|options|earnings|revenue|sales)\b/,
+    /\b([A-Z][A-Za-z0-9&.\-]*(?:\s+[A-Z][A-Za-z0-9&.\-]*){0,3})\s+(?:stock|shares|options)\s+(?:is|are|surges|rises|falls|drops|jumps|trading)\b/,
+    /\b(?:loading up on|alarm on|free-cash-flow positive until)\s+([A-Z][A-Za-z0-9&.\-]*(?:\s+[A-Z][A-Za-z0-9&.\-]*){0,3})\b/
+  ];
+
+  for (const pattern of subjectPatterns) {
+    const match = cleanedTitle.match(pattern);
+    const subject = match?.[1]?.trim();
+    if (!subject || subject.length < 3) continue;
+    if (textContainsPhrase(identity.companyName, subject) || identity.aliases.some((alias) => textContainsPhrase(alias, subject) || textContainsPhrase(subject, alias))) continue;
+    if (genericTitleSubjects.has(subject.toLowerCase())) continue;
+    return subject;
+  }
+
+  return null;
+}
+
+function isIncidentalTickerMention(article: NormalizedNewsArticle, identity: TickerIdentity) {
+  const title = article.title || article.headline;
+  const snippet = article.snippet ?? "";
+  const titleHasDirectMatch =
+    tickerSymbolMatches(title, identity.normalizedSymbol) ||
+    textContainsPhrase(title, identity.companyName) ||
+    identity.aliases.some((alias) => alias.toUpperCase() !== identity.normalizedSymbol && textContainsPhrase(title, alias));
+  if (titleHasDirectMatch) return false;
+  if (!snippetMentionsIdentity(snippet, identity)) return false;
+
+  const text = snippet.toLowerCase();
+  return incidentalTickerPhrases.some((phrase) => text.includes(phrase.toLowerCase()));
+}
+
+function hasTrustedTickerMetadata(article: NormalizedNewsArticle) {
+  const provider = `${article.provider ?? ""} ${article.originalProvider ?? ""}`.toLowerCase();
+  return !article.cached && (provider.includes("finnhub") || provider.includes("marketaux") || provider.includes("alpha vantage"));
+}
+
+function isTrueCompanyNewsEndpoint(article: NormalizedNewsArticle, identity: TickerIdentity) {
+  const provider = `${article.provider ?? ""} ${article.originalProvider ?? ""}`.toLowerCase();
+  const source = article.sourceName.toLowerCase();
+  if (article.cached) return false;
+  if (!article.relatedTickers.map((ticker) => ticker.toUpperCase()).includes(identity.normalizedSymbol)) return false;
+  return provider.includes("finnhub") || provider.includes("company news") || source.includes("finnhub");
+}
+
+function isWeakRssOrYahooArticle(article: NormalizedNewsArticle) {
+  const provider = `${article.provider ?? ""} ${article.originalProvider ?? ""} ${article.sourceName}`.toLowerCase();
+  return article.cached || provider.includes("rss") || provider.includes("yahoo");
+}
+
+function isStrongTickerAlias(alias: string, identity: TickerIdentity) {
+  const normalized = alias.toLowerCase();
+  if (identity.normalizedSymbol === "NVDA") return ["jensen huang", "blackwell", "cuda"].includes(normalized);
+  if (identity.normalizedSymbol === "MU") return ["micron", "dram", "hbm"].includes(normalized);
+  if (identity.normalizedSymbol === "AMD") return ["advanced micro devices", "ryzen", "epyc", "instinct"].includes(normalized);
+  if (identity.normalizedSymbol === "PLTR") return ["palantir", "palantir technologies"].includes(normalized);
+  return normalized === identity.shortName.toLowerCase();
+}
+
+function snippetMentionsIdentity(snippet: string, identity: TickerIdentity) {
+  return (
+    tickerSymbolMatches(snippet, identity.normalizedSymbol) ||
+    textContainsPhrase(snippet, identity.companyName) ||
+    identity.aliases.some((alias) => alias.toUpperCase() !== identity.normalizedSymbol && textContainsPhrase(snippet, alias))
+  );
+}
+
+function isIndustryAlignedTitle(title: string, category: string, identity: TickerIdentity) {
+  const text = `${title} ${category}`.toLowerCase();
+  if (identity.isEtf || identity.isIndex) {
+    return ["stock market", "s&p 500", "nasdaq", "dow", "equities", "wall street", "etf", "index"].some((term) => text.includes(term));
+  }
+
+  const sector = `${identity.sector} ${identity.industry}`.toLowerCase();
+  const terms = industryTermsForIdentity(identity, sector);
+  return terms.some((term) => text.includes(term));
+}
+
+function titleCentersAnotherCompany(title: string, identity: TickerIdentity) {
+  if (tickerSymbolMatches(title, identity.normalizedSymbol) || textContainsPhrase(title, identity.companyName)) return false;
+  return Object.entries(fallbackTickerIdentity).some(([symbol, other]) => {
+    if (symbol === identity.normalizedSymbol) return false;
+    const otherName = other.companyName ?? "";
+    const otherAliases = [otherName, cleanCompanyName(otherName), ...(other.aliases ?? [])].filter(Boolean);
+    return tickerSymbolMatches(title, symbol) || otherAliases.some((alias) => textContainsPhrase(title, alias));
+  });
+}
+
+function industryTermsForIdentity(identity: TickerIdentity, sector: string) {
+  const symbol = identity.normalizedSymbol;
+  if (["NVDA", "AMD", "MU", "AVGO", "TSM", "ARM"].includes(symbol)) return ["semiconductor", "chip", "gpu", "ai", "data center", "memory", "dram", "hbm"];
+  if (symbol === "TSLA") return ["ev", "electric vehicle", "auto", "robotaxi", "battery"];
+  if (symbol === "NKE") return ["retail", "apparel", "sneaker", "footwear", "consumer discretionary", "china sales"];
+  if (symbol === "RTX") return ["defense", "aerospace", "missile", "pratt", "raytheon", "contract"];
+  if (sector.includes("technology")) return ["technology", "software", "cloud", "ai", "semiconductor", "chip"];
+  if (sector.includes("consumer")) return ["retail", "consumer", "sales", "brand"];
+  if (sector.includes("industrial")) return ["industrial", "aerospace", "defense", "manufacturing"];
+  if (sector.includes("financial")) return ["bank", "financial", "credit", "lending"];
+  if (sector.includes("energy")) return ["oil", "gas", "energy", "crude"];
+  return [identity.shortName.toLowerCase()].filter(Boolean);
+}
+
+function isWeakTickerAlias(alias: string) {
+  return ["ai chip", "gpu maker", "data center chip", "ev maker", "tech stocks", "u.s. equities", "broad market"].includes(alias.toLowerCase());
+}
+
+function buildTickerAliases(symbol: string, companyName: string, overrides: string[]) {
+  const aliases = new Set<string>([symbol, companyName]);
+  const cleaned = cleanCompanyName(companyName);
+  if (cleaned) aliases.add(cleaned);
+  const words = cleaned.split(/\s+/).filter((word) => word.length > 2 && !genericAliasWords.has(word.toLowerCase()));
+  if (words.length) aliases.add(words.join(" "));
+  if (words.length === 1 && words[0].length > 3) aliases.add(words[0]);
+  overrides.forEach((alias) => aliases.add(alias));
+  return Array.from(aliases).map((alias) => alias.trim()).filter(Boolean);
+}
+
+function cleanCompanyName(name: string) {
+  return name
+    .replace(/\b(incorporated|inc\.?|corporation|corp\.?|company|co\.?|limited|ltd\.?|plc|holdings?|group|class a|common stock|ordinary shares)\b/gi, "")
+    .replace(/[,.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tickerSymbolMatches(text: string, symbol: string) {
+  if (symbol.length <= 2) return false;
+  return new RegExp(`(^|[^A-Z0-9])${escapeRegExp(symbol)}([^A-Z0-9]|$)`, "i").test(text);
+}
+
+function textContainsPhrase(text: string, phrase: string) {
+  const cleaned = phrase.trim();
+  if (!cleaned || genericAliasWords.has(cleaned.toLowerCase())) return false;
+  return new RegExp(`(^|[^A-Z0-9])${escapeRegExp(cleaned)}([^A-Z0-9]|$)`, "i").test(text);
+}
+
+function inferAssetType(symbol: string, companyName: string) {
+  if (["SPY", "QQQ", "DIA", "IWM", "GLD", "TLT"].includes(symbol) || /\b(etf|trust|fund)\b/i.test(companyName)) return "ETF";
+  return "stock";
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const genericAliasWords = new Set([
+  "the",
+  "united",
+  "american",
+  "global",
+  "international",
+  "holdings",
+  "group",
+  "technologies",
+  "technology",
+  "energy",
+  "capital",
+  "financial",
+  "corp",
+  "corporation",
+  "inc",
+  "company",
+  "common",
+  "stock"
+]);
+
+const incidentalTickerPhrases = [
+  "missed out on",
+  "back in 2009",
+  "next nvidia",
+  "next tesla",
+  "next apple",
+  "like nvidia",
+  "like tesla",
+  "better than nvidia",
+  "better than tesla",
+  "if you invested",
+  "turned $1,000 into",
+  "turned $1000 into",
+  "millionaire-maker",
+  "motley fool recommends",
+  "our top stock picks",
+  "buy these stocks instead",
+  "forget nvidia",
+  "forget tesla",
+  "this stock could be",
+  "once-in-a-generation",
+  "artificial promo text",
+  "disclosure:",
+  "affiliate",
+  "sponsored",
+  "advertisement"
+];
+
+const knownOtherCompanySubjects = [
+  "Archer Aviation",
+  "Beyond Meat",
+  "Penn Entertainment",
+  "SpaceX",
+  "Nike",
+  "RTX",
+  "Caterpillar",
+  "Netflix",
+  "Disney",
+  "Boeing",
+  "Exxon",
+  "Chevron",
+  "JPMorgan",
+  "Amazon",
+  "Meta",
+  "Google",
+  "Alphabet"
+];
+
+const genericTitleSubjects = new Set([
+  "stock",
+  "stocks",
+  "shares",
+  "market",
+  "markets",
+  "wall street",
+  "s&p",
+  "nasdaq",
+  "dow",
+  "ai",
+  "chip",
+  "chips",
+  "semiconductor",
+  "semiconductors"
+]);
+
+const fallbackTickerIdentity: Record<string, Partial<TickerIdentity> & { aliases?: string[]; companyName?: string }> = {
+  NVDA: { companyName: "NVIDIA Corporation", assetType: "stock", sector: "Technology", aliases: ["NVIDIA", "Jensen Huang", "Blackwell", "CUDA", "GPU maker", "AI chip", "data center chip"] },
+  AAPL: { companyName: "Apple Inc.", assetType: "stock", sector: "Technology", aliases: ["Apple", "iPhone", "Mac", "Tim Cook"] },
+  MSFT: { companyName: "Microsoft Corporation", assetType: "stock", sector: "Technology", aliases: ["Microsoft", "Azure", "Satya Nadella", "Copilot"] },
+  TSLA: { companyName: "Tesla Inc.", assetType: "stock", sector: "Consumer Cyclical", aliases: ["Tesla", "Elon Musk", "Model Y", "EV maker"] },
+  MU: { companyName: "Micron Technology Inc.", assetType: "stock", sector: "Technology", aliases: ["Micron", "DRAM", "HBM", "memory chip"] },
+  AMD: { companyName: "Advanced Micro Devices Inc.", assetType: "stock", sector: "Technology", aliases: ["Advanced Micro Devices", "Ryzen", "EPYC", "Instinct"] },
+  PLTR: { companyName: "Palantir Technologies Inc.", assetType: "stock", sector: "Technology", aliases: ["Palantir", "Palantir Technologies"] },
+  NKE: { companyName: "Nike Inc.", assetType: "stock", sector: "Consumer Cyclical", aliases: ["Nike"] },
+  RTX: { companyName: "RTX Corporation", assetType: "stock", sector: "Industrials", aliases: ["RTX", "Raytheon"] },
+  SPY: { companyName: "SPDR S&P 500 ETF Trust", assetType: "ETF", aliases: ["S&P 500", "U.S. equities", "Wall Street", "broad market"] },
+  QQQ: { companyName: "Invesco QQQ Trust", assetType: "ETF", aliases: ["Nasdaq 100", "Nasdaq", "tech stocks"] }
+};
+
 function isClearlyUnrelatedToMarkets(text: string) {
   const nonMarketTerms = [
     "resume",
@@ -1351,6 +1912,14 @@ function isClearlyUnrelatedToMarkets(text: string) {
     "career advice",
     "salary negotiation",
     "workplace",
+    "pixel phone",
+    "android phone",
+    "chrome beta",
+    "wireless charging",
+    "smartphone",
+    "quit his",
+    "job package",
+    "audio",
     "celebrity",
     "movie",
     "tv show",
@@ -1625,6 +2194,29 @@ function buildNewsDebugMeta({
     newestArticleAt: sorted[0]?.publishedAt ?? null,
     oldestArticleAt: sorted.at(-1)?.publishedAt ?? null,
     cacheUsed: cachedArticleCount > 0
+  };
+}
+
+function emptyNewsMeta(): NewsProviderDebugMeta {
+  return {
+    liveProviderArticleCount: 0,
+    cachedArticleCount: 0,
+    totalArticlesBeforeFiltering: 0,
+    totalArticlesAfterFiltering: 0,
+    totalArticlesAfterMerge: 0,
+    providersUsed: [],
+    providerHealth: {},
+    providerCounts: {},
+    acceptedCounts: {},
+    rejectedCounts: {},
+    rejectedReasons: {},
+    firstRejectedArticles: [],
+    dedupedCount: 0,
+    bucketCounts: {},
+    categoryCounts: {},
+    newestArticleAt: null,
+    oldestArticleAt: null,
+    cacheUsed: false
   };
 }
 

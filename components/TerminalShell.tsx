@@ -33,8 +33,8 @@ export function TerminalShell({
                 <Orbit className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-sm font-semibold text-terminal-text">MarketPulse</div>
-                <div className="text-xs text-terminal-muted">Live market research terminal</div>
+                <div className="text-sm font-bold tracking-tight text-terminal-text">MarketPulse</div>
+                <div className="font-mono text-[11px] text-terminal-muted">Live market research terminal</div>
               </div>
             </div>
           </div>
@@ -47,7 +47,7 @@ export function TerminalShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-terminal-muted transition",
+                    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-terminal-muted transition",
                     selected && "bg-terminal-cyan/[0.12] text-terminal-text shadow-[inset_0_0_0_1px_rgba(56,217,255,0.18)]",
                     !selected && "hover:bg-white/[0.055] hover:text-terminal-text"
                   )}
@@ -68,7 +68,7 @@ export function TerminalShell({
                 <div className="inline-flex rounded-full border border-terminal-cyan/20 bg-terminal-cyan/[0.08] px-3 py-1 text-xs font-medium text-terminal-cyan">
                   Provider data only
                 </div>
-                <h1 className="mt-3 text-3xl font-semibold tracking-tight">{title}</h1>
+                <h1 className="mt-3 text-3xl font-bold tracking-tight md:text-[2rem]">{title}</h1>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-terminal-muted">{subtitle}</p>
               </div>
               <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">

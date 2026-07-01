@@ -1,7 +1,7 @@
 import { DataTable, type Column } from "@/components/DataTable";
 import { AIInsight } from "@/components/AIInsight";
 import { InteractivePriceChart } from "@/components/InteractivePriceChart";
-import { DataQualityLabel, LocalTime } from "@/components/LocalTime";
+import { DataQualityLabel, SimpleLocalTime } from "@/components/LocalTime";
 import { MetricCard } from "@/components/MetricCard";
 import { Panel } from "@/components/Panel";
 import { TerminalShell } from "@/components/TerminalShell";
@@ -51,11 +51,11 @@ type Earnings = {
 type RelatedNews = {
   time: string;
   headline: string;
-  impact: string;
   source: string;
   snippet: string;
   relatedTickers: string[];
   url: string;
+  timestampValid?: boolean;
 };
 
 type TickerDetail = {
@@ -112,10 +112,9 @@ const earningsColumns: Column<Earnings>[] = [
 ];
 
 const newsColumns: Column<RelatedNews>[] = [
-  { key: "time", header: "Time", render: (row) => <span className="text-terminal-cyan"><LocalTime value={dateFromDisplayTime(row.time)} /></span> },
+  { key: "time", header: "Time", render: (row) => <span className="text-terminal-cyan"><SimpleLocalTime value={row.time} timestampValid={row.timestampValid} /></span> },
   { key: "headline", header: "Headline", render: (row) => row.headline },
-  { key: "source", header: "Source", render: (row) => row.source },
-  { key: "impact", header: "Impact", align: "right", render: (row) => <ImpactText impact={row.impact} /> }
+  { key: "source", header: "Source", render: (row) => row.source }
 ];
 
 export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }) {
@@ -155,7 +154,7 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
     <TerminalShell
       active=""
       title={`${detail.symbol} Research Terminal`}
-      subtitle="Ticker detail view with quote data, interactive price action, fundamentals, opportunity analysis, news, peers, and compact AI context."
+      subtitle="Ticker detail view with quote data, interactive price action, fundamentals, setup analysis, news, peers, and compact AI context."
     >
       <div className="grid gap-3">
         <Panel
@@ -222,24 +221,21 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
             <DataTable columns={earningsColumns} rows={detail.earnings} />
           </Panel>
 
-          <Panel title="Latest News" action={<span className="font-mono text-xs text-terminal-muted">Times shown in your local timezone</span>}>
+          <Panel title="Latest News">
             <div className="grid gap-2">
               {detail.news.map((item) => (
                 <article key={`${item.time}-${item.headline}`} className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
                   <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-terminal-muted">
-                    <LocalTime value={dateFromDisplayTime(item.time)} />
-                    <span>/</span>
+                    <SimpleLocalTime value={item.time} timestampValid={item.timestampValid} />
+                    <span aria-hidden="true">·</span>
                     <span>{item.source}</span>
-                    <ImpactText impact={item.impact} />
                   </div>
-                  <h3 className="mt-2 text-sm font-semibold leading-5 text-terminal-text">{item.headline}</h3>
-                  <p className="mt-2 text-xs leading-5 text-terminal-muted">{item.snippet}</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                    <TickerList symbols={item.relatedTickers} />
+                  <h3 className="mt-2 text-[0.95rem] font-semibold leading-5 tracking-[-0.01em] text-terminal-text">{item.headline}</h3>
+                  {item.snippet ? <p className="mt-2 text-xs leading-5 text-terminal-muted">{item.snippet}</p> : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-3 font-mono text-xs">
                     <a href={item.url} target="_blank" rel="noreferrer" className="text-terminal-cyan underline-offset-4 hover:underline">
                       Read original article
                     </a>
-                    <span className="text-terminal-muted">Why it matters: watch whether this changes estimates, flows, or sector sentiment.</span>
                   </div>
                 </article>
               ))}
@@ -323,20 +319,13 @@ function buildTickerDetail(
   const catalysts = ["Data unavailable"];
   const opportunityAnalysis = calculateOpportunityScore({
     symbol,
-    sector,
-    revenueGrowth: 0,
-    epsGrowth: 0,
-    freeCashFlowTrend: "Data unavailable",
-    grossMargin: 0,
-    distanceFromHigh: 0,
-    relativeStrength: undefined,
-    newsSentiment: "Data unavailable",
-    sectorTailwind: sector,
-    earningsMomentum: "Data unavailable",
-    valuation: pe,
-    balanceSheetRisk: riskLabel,
-    earningsDate: undefined,
-    catalysts
+    price: quotePrice,
+    dayHigh: providerData.quote?.dayHigh,
+    dayLow: providerData.quote?.dayLow,
+    technicals: providerData.technicals,
+    fundamentals: providerData.fundamentals,
+    news: providerData.news,
+    candles: providerData.candles
   });
 
   return {
@@ -421,12 +410,6 @@ function formatChange(value: number) {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-function dateFromDisplayTime(time: string) {
-  if (time.includes("T")) return time;
-  const [hour = "0", minute = "0"] = time.replace(" PT", "").split(":");
-  return `2026-06-27T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00-07:00`;
-}
-
 function buildChart(candles: OhlcvCandle[]) {
   if (!candles.length) return buildEmptyCandleSet();
   return {
@@ -451,11 +434,11 @@ function articleToRelatedNews(article: NormalizedNewsArticle): RelatedNews {
   return {
     time: article.publishedAt,
     headline: article.headline,
-    impact: article.impactLevel ?? "Medium",
     source: article.sourceName,
     snippet: article.snippet,
     relatedTickers: article.relatedTickers.length ? article.relatedTickers : [],
-    url: article.url
+    url: article.url,
+    timestampValid: article.timestampValid
   };
 }
 
@@ -624,30 +607,85 @@ function FuturesDetails({ profile }: { profile: FutureProfile }) {
 
 function OpportunityAnalysis({ analysis }: { analysis: OpportunityScoreResult }) {
   return (
-    <Panel title="Opportunity Analysis" action={<DataQualityLabel />}>
+    <Panel title="Setup Analysis" action={<span className="font-mono text-xs text-terminal-muted">Research signal only. Not financial advice.</span>}>
       <div className="grid gap-3 xl:grid-cols-[220px_1fr]">
         <div className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
-          <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">Opportunity Score</div>
-          <div className="mt-3 text-5xl font-semibold tracking-tight text-terminal-cyan">{analysis.score}/100</div>
+          <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">Setup Score</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-terminal-cyan">
+            {analysis.score === null ? "Limited data" : `${analysis.score}/100`}
+          </div>
           <div className="mt-3">
-            <VerdictPill verdict={analysis.verdict} />
+            <SetupPill label={analysis.label} />
+          </div>
+          <div className="mt-4 font-mono text-xs text-terminal-muted">
+            Data coverage: {analysis.dataCoverage.available} of {analysis.dataCoverage.total} signals available
           </div>
           <p className="mt-4 text-xs leading-5 text-terminal-muted">
             Research signal only. This is not a price prediction or financial advice.
           </p>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <BulletBlock title="Why It Appears Interesting" items={analysis.drivers} />
-          <BulletBlock title="Why It May Be Down" items={analysis.whyDown} />
-          <BulletBlock title="What Could Help Recovery" items={analysis.recoveryCatalysts} />
-          <BulletBlock title="Main Risks" items={analysis.risks} />
+        <div className="grid gap-3">
+          {analysis.isUnavailable ? (
+            <div className="rounded-lg border border-terminal-amber/20 bg-white/[0.045] p-4">
+              <div className="text-sm font-semibold text-terminal-amber">Setup Analysis unavailable</div>
+              <p className="mt-2 text-sm leading-6 text-terminal-muted">{analysis.unavailableReason}</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <SignalList title="Available data" items={analysis.availableSignals} fallback="No reliable setup signals available." />
+                <SignalList title="Unavailable" items={analysis.unavailableSignals} fallback="No unavailable signals reported." />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {analysis.signalScores.map((signal) => (
+              <SignalCard key={signal.label} signal={signal} />
+            ))}
+          </div>
         </div>
       </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <BulletBlock title="Why It Appears Interesting" items={analysis.drivers} />
+        <BulletBlock title="Why It May Be Down" items={analysis.whyDown} />
+        <BulletBlock title="What Could Help Recovery" items={analysis.recoveryCatalysts} />
+        <BulletBlock title="Main Risks" items={analysis.risks} />
+      </div>
       <div className="mt-3">
-        <BulletBlock title="Catalyst Watch" items={analysis.catalystWatch} columns />
+        <BulletBlock title="Catalyst Watch" items={analysis.catalystWatch.length ? analysis.catalystWatch : ["Not enough real data available for this signal."]} columns />
       </div>
     </Panel>
+  );
+}
+
+function SignalCard({ signal }: { signal: OpportunityScoreResult["signalScores"][number] }) {
+  const available = signal.status === "available";
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">{signal.label}</div>
+        <span className={available ? "font-mono text-xs text-terminal-green" : "font-mono text-xs text-terminal-muted"}>
+          {available ? "Available" : "Unavailable"}
+        </span>
+      </div>
+      <div className="mt-2 text-lg font-semibold text-terminal-text">{signal.score === null ? "-" : `${signal.score}/100`}</div>
+      <p className="mt-2 text-xs leading-5 text-terminal-muted">{signal.detail}</p>
+    </div>
+  );
+}
+
+function SignalList({ title, items, fallback }: { title: string; items: string[]; fallback: string }) {
+  return (
+    <div>
+      <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">{title}</div>
+      <ul className="mt-2 space-y-1">
+        {(items.length ? items : [fallback]).map((item) => (
+          <li key={item} className="text-sm text-terminal-text">
+            <span className="mr-2 text-terminal-cyan">-</span>
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -667,17 +705,17 @@ function BulletBlock({ title, items, columns = false }: { title: string; items: 
   );
 }
 
-function VerdictPill({ verdict }: { verdict: OpportunityScoreResult["verdict"] }) {
+function SetupPill({ label }: { label: OpportunityScoreResult["label"] }) {
   const tone =
-    verdict === "Research Candidate"
+    label === "Strong setup" || label === "Constructive setup"
       ? "border-terminal-green/25 text-terminal-green"
-      : verdict === "Watch"
+      : label === "Mixed setup"
         ? "border-terminal-cyan/25 text-terminal-cyan"
-        : verdict === "Avoid" || verdict === "Weak Setup"
+        : label === "Poor setup" || label === "Weak setup"
           ? "border-terminal-red/25 text-terminal-red"
           : "border-terminal-amber/25 text-terminal-amber";
 
-  return <span className={`inline-flex rounded-md border px-2.5 py-1 font-mono text-xs ${tone}`}>{verdict}</span>;
+  return <span className={`inline-flex rounded-md border px-2.5 py-1 font-mono text-xs ${tone}`}>{label}</span>;
 }
 
 function TickerList({ symbols }: { symbols: string[] }) {
@@ -691,8 +729,4 @@ function TickerList({ symbols }: { symbols: string[] }) {
       ))}
     </span>
   );
-}
-
-function ImpactText({ impact }: { impact: string }) {
-  return <span className={impact === "High" ? "text-terminal-red" : "text-terminal-amber"}>{impact}</span>;
 }

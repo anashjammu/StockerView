@@ -21,7 +21,7 @@ export function TickerLink({
       href={`/ticker/${encodeURIComponent(normalized)}`}
       onClick={onClick}
       className={cn(
-        "font-mono text-terminal-cyan underline-offset-4 transition hover:text-terminal-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terminal-cyan/50",
+        "font-mono font-semibold tracking-[0.01em] text-terminal-cyan underline-offset-4 transition hover:text-terminal-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terminal-cyan/50",
         className
       )}
     >
