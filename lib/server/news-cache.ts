@@ -1,6 +1,7 @@
 import type { NormalizedNewsArticle } from "@/lib/provider-gateway";
 
 const MAX_AGE_MS = 30 * 86_400_000;
+let memoryCache: CachedNewsArticle[] = [];
 
 export type CachedNewsArticle = NormalizedNewsArticle & {
   cached: true;
@@ -67,20 +68,37 @@ export async function getNewsCacheSummary(query?: string) {
 }
 
 async function readCache(): Promise<CachedNewsArticle[]> {
+  if (isServerlessRuntime()) {
+    memoryCache = pruneCache(memoryCache);
+    return memoryCache;
+  }
+
   try {
     const fs = nodeFs();
     const raw = await fs.promises.readFile(cacheFile(), "utf8");
     const parsed = JSON.parse(raw);
-    return pruneCache(Array.isArray(parsed) ? parsed : []);
+    memoryCache = pruneCache(Array.isArray(parsed) ? parsed : []);
+    return memoryCache;
   } catch {
-    return [];
+    memoryCache = pruneCache(memoryCache);
+    return memoryCache;
   }
 }
 
 async function writeCache(rows: CachedNewsArticle[]) {
-  const fs = nodeFs();
-  await fs.promises.mkdir(cacheDir(), { recursive: true });
-  await fs.promises.writeFile(cacheFile(), JSON.stringify(rows, null, 2));
+  memoryCache = pruneCache(rows);
+
+  if (isServerlessRuntime()) {
+    return;
+  }
+
+  try {
+    const fs = nodeFs();
+    await fs.promises.mkdir(cacheDir(), { recursive: true });
+    await fs.promises.writeFile(cacheFile(), JSON.stringify(memoryCache, null, 2));
+  } catch (error) {
+    console.error(`[news-cache] write_failed reason=${safeError(error)}`);
+  }
 }
 
 function pruneCache(rows: CachedNewsArticle[]) {
@@ -130,4 +148,13 @@ function cacheDir() {
 
 function cacheFile() {
   return nodePath().join(cacheDir(), "news-cache.json");
+}
+
+function isServerlessRuntime() {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION);
+}
+
+function safeError(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }

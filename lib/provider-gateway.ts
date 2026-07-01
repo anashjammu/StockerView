@@ -272,6 +272,20 @@ export async function fetchRealHistory(symbol: string, request: HistoryRequest =
   const route = `api/history/${symbol}`;
   const normalizedInterval = normalizeInterval(request.interval);
   const intraday = normalizedInterval !== "1day";
+
+  const indexChain = buildMarketIndexHistoryChain(route, symbol, request);
+  if (indexChain) {
+    const result = await indexChain;
+    if (result?.data) {
+      logFinal(route, result.source, result.status, true, result.error);
+      return withUpdatedAt(result);
+    }
+
+    const error = result?.error ?? "Index history unavailable.";
+    logFinal(route, "Unavailable", "unavailable", false, error);
+    return unavailable(error);
+  }
+
   const providers: Array<() => Promise<AttemptResult<NormalizedHistory>>> = intraday
     ? [
         () => fetchAlpacaHistory(route, symbol, request),
@@ -591,10 +605,19 @@ async function fetchMergedNews(
   const dedupedLive = dedupeNews(liveRelevant, route).sort(sortNewsNewestFirst);
   dedupedCount += Math.max(0, beforeLiveDedupe - dedupedLive.length);
   if (dedupedLive.length) {
-    await saveRealNewsToCache(dedupedLive, Array.from(sources).join(" + ") || "Provider");
+    try {
+      await saveRealNewsToCache(dedupedLive, Array.from(sources).join(" + ") || "Provider");
+    } catch (error) {
+      console.error(`[${route}] cache_write_failed reason=${safeError(error)}`);
+    }
   }
 
-  const cachedArticles = (await readCachedNews(request.range ?? "7d")).filter((article) => isMarketRelevantArticle(article));
+  let cachedArticles: NormalizedNewsArticle[] = [];
+  try {
+    cachedArticles = (await readCachedNews(request.range ?? "7d")).filter((article) => isMarketRelevantArticle(article));
+  } catch (error) {
+    console.error(`[${route}] cache_read_failed reason=${safeError(error)}`);
+  }
   const cachedCount = cachedArticles.length;
   if (cachedCount) sources.add("cached real articles");
   const beforeFinalDedupe = dedupedLive.length + cachedArticles.length;
@@ -686,6 +709,85 @@ async function fetchFmpHistory(route: string, symbol: string, request: HistoryRe
   const candles = rows.map(normalizeFmpCandle).filter(isCandle).reverse();
   logProvider(route, "FMP", symbol, json.httpStatus, json.keys, candles.length > 0, `usableCandles=${candles.length}`);
   return candles.length ? delayed("Financial Modeling Prep", { symbol, candles }) : failed("Financial Modeling Prep", "FMP historical response had no usable candles.");
+}
+
+async function buildMarketIndexHistoryChain(route: string, symbol: string, request: HistoryRequest): Promise<AttemptResult<NormalizedHistory> | null> {
+  const chain = getMarketIndexHistoryChain(symbol);
+  if (!chain) return null;
+
+  for (const candidate of chain) {
+    const providerLabel = candidate.provider === "Twelve Data" ? "Twelve Data" : "Financial Modeling Prep";
+    console.info(`[${route}] provider_attempt provider=${providerLabel} symbol=${candidate.symbol} status=pending candles=0`);
+
+    const result = candidate.provider === "Twelve Data"
+      ? await fetchTwelveDataMarketHistoryCandidate(route, candidate.symbol, request)
+      : await fetchFmpMarketHistoryCandidate(route, candidate.symbol, request);
+
+    const candlesCount = result.data?.candles.length ?? 0;
+    console.info(`[${route}] provider_attempt provider=${providerLabel} symbol=${candidate.symbol} status=${result.statusCode ?? 0} candles=${candlesCount}`);
+
+    if (result.data?.candles.length) {
+      console.info(`[${route}] final provider=${providerLabel} symbol=${candidate.symbol} status=${result.statusCode ?? 200} candles=${candlesCount}`);
+      return { data: result.data, source: providerLabel, status: "delayed", delay: "Provider-dependent", error: undefined };
+    }
+  }
+
+  console.info(`[${route}] final provider=Unavailable symbol=${symbol} status=0 candles=0`);
+  return failed("Unavailable", "Index history unavailable from configured providers.");
+}
+
+function getMarketIndexHistoryChain(symbol: string): Array<{ provider: "Twelve Data" | "FMP"; symbol: string }> | null {
+  const normalized = symbol.toUpperCase();
+  switch (normalized) {
+    case "NASDAQ":
+    case "IXIC":
+    case "^IXIC":
+      return [
+        { provider: "Twelve Data", symbol: "IXIC" },
+        { provider: "Twelve Data", symbol: "^IXIC" },
+        { provider: "Twelve Data", symbol: "NASDAQ" }
+      ];
+    case "SPX":
+    case "GSPC":
+    case "^GSPC":
+      return [
+        { provider: "Twelve Data", symbol: "GSPC" },
+        { provider: "Twelve Data", symbol: "^GSPC" },
+        { provider: "Twelve Data", symbol: "SPX" }
+      ];
+    case "DJIA":
+    case "DJI":
+    case "^DJI":
+      return [
+        { provider: "Twelve Data", symbol: "DJI" },
+        { provider: "Twelve Data", symbol: "^DJI" },
+        { provider: "Twelve Data", symbol: "DJIA" }
+      ];
+    default:
+      return null;
+  }
+}
+
+async function fetchTwelveDataMarketHistoryCandidate(route: string, symbol: string, request: HistoryRequest): Promise<{ data: NormalizedHistory | null; statusCode: number }> {
+  if (!serverEnv.twelveDataApiKey) {
+    return { data: null, statusCode: 0 };
+  }
+
+  const json = await providerJson(route, "Twelve Data", symbol, `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=1day&outputsize=500&apikey=${serverEnv.twelveDataApiKey}`);
+  const rows = Array.isArray(json.data?.values) ? json.data.values : [];
+  const candles = rows.map(normalizeTwelveDataCandle).filter(isCandle).reverse();
+  return { data: candles.length ? { symbol, candles } : null, statusCode: json.httpStatus };
+}
+
+async function fetchFmpMarketHistoryCandidate(route: string, symbol: string, request: HistoryRequest): Promise<{ data: NormalizedHistory | null; statusCode: number }> {
+  if (!serverEnv.fmpApiKey) {
+    return { data: null, statusCode: 0 };
+  }
+
+  const json = await providerJson(route, "FMP history", symbol, `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=${historyLimit(request.range)}&apikey=${serverEnv.fmpApiKey}`);
+  const rows = extractFmpPayloadRows(json.data);
+  const candles = rows.map(normalizeFmpCandle).filter(isCandle).reverse();
+  return { data: candles.length ? { symbol, candles } : null, statusCode: json.httpStatus };
 }
 
 async function fetchAlphaVantageHistory(route: string, symbol: string, request: HistoryRequest): Promise<AttemptResult<NormalizedHistory>> {
@@ -1152,7 +1254,7 @@ function normalizeAlphaVantageCandle(date: string, row: unknown): NormalizedCand
 
 function normalizeTwelveDataCandle(row: unknown): NormalizedCandle | null {
   const record = asRecord(row);
-  return makeCandle(record.datetime, record.open, record.high, record.low, record.close, record.volume);
+  return makeCandle(record.datetime ?? record.date ?? record.timestamp, record.open, record.high, record.low, record.close, record.volume);
 }
 
 function normalizeAlpacaCandle(row: unknown): NormalizedCandle | null {

@@ -17,14 +17,13 @@ import { heatMap, indexChartTitles, marketBreadth, type Ticker } from "@/lib/app
 type MarketIndexTicker = Ticker & {
   displaySymbol: string;
   providerSymbol: string;
-  proxyLabel?: string;
 };
 
 const marketIndexes = [
-  { displayName: "NASDAQ", displaySymbol: "NASDAQ", providerSymbols: ["^IXIC", "QQQ"], proxySymbol: "QQQ" },
-  { displayName: "S&P 500", displaySymbol: "SPX", providerSymbols: ["^GSPC", "SPY"], proxySymbol: "SPY" },
-  { displayName: "NYSE", displaySymbol: "NYSE", providerSymbols: ["^NYA", "VTI"], proxySymbol: "VTI" },
-  { displayName: "Dow Jones", displaySymbol: "DJI", providerSymbols: ["^DJI", "DIA"], proxySymbol: "DIA" }
+  { displayName: "NASDAQ", displaySymbol: "NASDAQ", providerSymbols: ["IXIC", "^IXIC", "NASDAQ"] },
+  { displayName: "S&P 500", displaySymbol: "SPX", providerSymbols: ["GSPC", "^GSPC", "SPX"] },
+  { displayName: "NYSE", displaySymbol: "NYSE", providerSymbols: ["NYA", "^NYA", "NYSE"] },
+  { displayName: "Dow Jones", displaySymbol: "DJI", providerSymbols: ["DJI", "^DJI", "DJIA"] }
 ];
 
 const columns: Column<MarketIndexTicker>[] = [
@@ -50,7 +49,7 @@ export default function MarketDashboard() {
   const [quotes, setQuotes] = useState<MarketIndexTicker[]>([]);
   const [chartCandles, setChartCandles] = useState<Record<ChartTimeframe, OhlcvCandle[]>>(buildEmptyCandleSet());
   const selectedIndexData = quotes.find((index) => index.symbol === selectedIndex);
-  const selectedProviderSymbol = selectedIndexData?.providerSymbol ?? "QQQ";
+  const selectedProviderSymbol = selectedIndexData?.providerSymbol ?? "IXIC";
   const analysis = generateSourceGroundedAnalysis({
     id: "market-dashboard",
     title: "Market Drivers",
@@ -166,7 +165,6 @@ function IndexCard({
       <div className="truncate text-xs text-terminal-muted">
         <TickerLink symbol={index.symbol} /> · {index.name}
       </div>
-      {index.proxyLabel ? <div className="mt-1 truncate font-mono text-[11px] text-terminal-amber">{index.proxyLabel}</div> : null}
       <button type="button" onClick={onSelect} aria-pressed={selected} className="mt-2 flex w-full min-w-0 items-end justify-between gap-3 text-left">
         <span className="min-w-0 truncate text-xl font-semibold tracking-tight">{index.price ? index.price.toFixed(2) : "Data unavailable"}</span>
         <span className={cn("text-sm", positive ? "text-terminal-green" : "text-terminal-red")}>{formatChange(index.change)}</span>
@@ -190,8 +188,7 @@ async function resolveMarketIndexQuote(index: (typeof marketIndexes)[number]): P
         price: quote.price,
         change: quote.changePercent,
         volume: quote.volume ? quote.volume.toLocaleString() : "Unavailable",
-        sector: providerSymbol === index.proxySymbol ? "ETF proxy" : "Index",
-        proxyLabel: providerSymbol === index.proxySymbol ? `Using ${providerSymbol} as real-data proxy.` : undefined
+        sector: "Index"
       };
     }
   }
