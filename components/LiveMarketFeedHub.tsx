@@ -85,13 +85,13 @@ export function LiveMarketFeedHub({
   }, [dateRange]);
 
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-4">
       <Panel title="Search">
         <LiveMarketSearch />
       </Panel>
 
       <Panel title="Articles" action={<NewsStatusLine status={statusState} loading={loadingNews} />}>
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <FilterBar items={rangeFilters} value={dateRange} onChange={setDateRange} />
             <FilterBar items={articleFilters} value={articleFilter} onChange={setArticleFilter} />
@@ -106,14 +106,14 @@ export function LiveMarketFeedHub({
             {pagedArticles.length ? <GroupedArticles items={pagedArticles} range={dateRange} /> : <EmptyState message={loadingNews ? "Loading latest articles..." : "No articles found"} />}
           </div>
           {totalPages > 1 ? (
-            <div className="flex items-center justify-between gap-3 border-t border-white/[0.08] pt-3">
+            <div className="flex items-center justify-between gap-3 border-t border-terminal-line pt-3">
               <span className="text-xs text-terminal-muted">Page {page} of {totalPages}</span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                   disabled={page <= 1}
-                  className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-1.5 text-xs text-terminal-text transition disabled:cursor-not-allowed disabled:opacity-45"
+                  className="rounded-lg border border-terminal-line bg-terminal-panel px-3 py-1.5 text-xs text-terminal-text transition hover:border-terminal-cyan/25 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   Previous
                 </button>
@@ -121,7 +121,7 @@ export function LiveMarketFeedHub({
                   type="button"
                   onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                   disabled={page >= totalPages}
-                  className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-1.5 text-xs text-terminal-text transition disabled:cursor-not-allowed disabled:opacity-45"
+                  className="rounded-lg border border-terminal-line bg-terminal-panel px-3 py-1.5 text-xs text-terminal-text transition hover:border-terminal-cyan/25 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   Next
                 </button>
@@ -136,9 +136,9 @@ export function LiveMarketFeedHub({
 
 function BreakingNewsStrip({ item }: { item: NewsItem }) {
   return (
-    <div className="rounded-xl border border-terminal-red/20 bg-white/[0.06] p-3">
+    <div className="rounded-xl border border-terminal-red/20 bg-terminal-panel2 p-3">
       <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-        <span className="rounded-md border border-terminal-red/25 bg-white/[0.045] px-3 py-1 uppercase tracking-[0.12em] text-terminal-red">Breaking</span>
+        <span className="rounded-md border border-terminal-red/25 bg-terminal-panel px-3 py-1 uppercase tracking-[0.12em] text-terminal-red">Breaking</span>
         <SimpleLocalTime value={item.publishedAt} timestampValid={item.timestampValid} />
         <span className="text-terminal-muted">{item.sourceName}</span>
         <TickerList symbols={item.relatedTickers} />
@@ -163,11 +163,11 @@ function MarketTonePanel({ brief }: { brief: MarketBrief }) {
 
 function ToneList({ title, items }: { title: string; items: string[] }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
+    <div className="rounded-lg border border-terminal-line bg-terminal-panel2 p-3">
       <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">{title}</div>
       <div className="mt-2 flex flex-wrap gap-2">
         {items.map((item) => (
-          <span key={item} className="rounded-md border border-white/10 bg-white/[0.045] px-2.5 py-1 text-xs text-terminal-text">
+          <span key={item} className="rounded-md border border-terminal-line bg-terminal-panel px-2.5 py-1 text-xs text-terminal-text">
             {item}
           </span>
         ))}
@@ -178,7 +178,7 @@ function ToneList({ title, items }: { title: string; items: string[] }) {
 
 function FeedRow({ item }: { item: NewsItem }) {
   return (
-    <div className="grid gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-3 text-xs xl:grid-cols-[90px_1fr_120px_140px_120px_90px] xl:items-center">
+    <div className="grid gap-2 rounded-lg border border-terminal-line bg-terminal-panel2 p-3 text-xs xl:grid-cols-[90px_1fr_120px_140px_120px_90px] xl:items-center">
       <span className="font-mono text-terminal-cyan"><SimpleLocalTime value={item.publishedAt} timestampValid={item.timestampValid} /></span>
       <div>
         <div className="text-sm font-medium text-terminal-text">{item.headline}</div>
@@ -213,8 +213,8 @@ function GroupedFeed({ items, range }: { items: NewsItem[]; range: string }) {
 
 function ArticleCard({ item }: { item: NewsItem }) {
   return (
-    <article className="rounded-xl border border-white/10 bg-white/[0.045] p-4">
-      <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-terminal-muted">
+    <article className="rounded-xl border border-terminal-line bg-terminal-panel p-4 shadow-[0_4px_10px_rgba(15,23,42,0.03)]">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-terminal-muted">
         <SimpleLocalTime value={item.publishedAt} timestampValid={item.timestampValid} />
         <span aria-hidden="true">·</span>
         <span>{item.sourceName}</span>
@@ -222,10 +222,10 @@ function ArticleCard({ item }: { item: NewsItem }) {
         <span>{item.category}</span>
       </div>
       <h3 className="mt-3 text-[1.02rem] font-semibold leading-6 tracking-[-0.01em] text-terminal-text">{item.headline}</h3>
-      {item.snippet ? <p className="mt-2 text-sm leading-6 text-terminal-muted">{item.snippet}</p> : null}
+      {item.snippet ? <p className="mt-2 text-sm leading-6 text-terminal-muted line-clamp-4">{item.snippet}</p> : null}
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
         <TickerList symbols={item.relatedTickers} />
-        <a href={item.url} target="_blank" rel="noreferrer" className="rounded-lg border border-terminal-cyan/25 px-3 py-1.5 text-terminal-cyan transition hover:border-terminal-cyan/50">
+        <a href={item.url} target="_blank" rel="noreferrer" className="rounded-lg border border-terminal-cyan/25 bg-terminal-cyan/[0.04] px-2.5 py-1 text-terminal-cyan transition hover:border-terminal-cyan/40">
           Read original article
         </a>
       </div>
@@ -235,7 +235,7 @@ function ArticleCard({ item }: { item: NewsItem }) {
 
 function GroupedArticles({ items, range }: { items: NewsItem[]; range: string }) {
   return (
-    <div className="grid gap-3 lg:col-span-2">
+    <div className="grid gap-4 lg:col-span-2">
       {newsGroups(items, range).map((group) => (
         <section key={group.title} className="grid gap-3">
           <div className="text-xs font-medium uppercase tracking-[0.08em] text-terminal-muted">{group.title}</div>
@@ -257,8 +257,8 @@ function FilterBar({ items, value, onChange }: { items: string[]; value: string;
           type="button"
           onClick={() => onChange(item)}
           className={cn(
-            "rounded-lg border px-3 py-1.5 text-xs transition",
-            value === item ? "border-terminal-cyan/35 bg-terminal-cyan/[0.12] text-terminal-cyan" : "border-white/10 bg-white/[0.03] text-terminal-muted hover:border-white/20 hover:text-terminal-text"
+            "rounded-full border px-3 py-1 text-xs transition",
+            value === item ? "border-terminal-cyan/30 bg-terminal-cyan/[0.09] text-terminal-cyan" : "border-terminal-line bg-terminal-panel text-terminal-muted hover:border-terminal-cyan/20 hover:text-terminal-text"
           )}
         >
           {item}
@@ -381,11 +381,10 @@ function rangeParam(range: string) {
 function TickerList({ symbols }: { symbols: string[] }) {
   if (!symbols.length) return null;
   return (
-    <span className="inline-flex flex-wrap gap-x-1.5 gap-y-1">
+    <span className="inline-flex flex-wrap gap-1">
       {symbols.map((symbol, index) => (
-        <span key={`${symbol}-${index}`} className="inline-flex items-center gap-1">
+        <span key={`${symbol}-${index}`} className="inline-flex items-center rounded-full border border-terminal-line bg-terminal-panel2 px-2 py-0.5 text-[11px] text-terminal-muted">
           <TickerLink symbol={symbol} />
-          {index < symbols.length - 1 ? <span className="text-terminal-muted">,</span> : null}
         </span>
       ))}
     </span>
@@ -411,11 +410,11 @@ function SentimentPill({ sentiment }: { sentiment: NewsSentiment }) {
         ? "border-terminal-red/25 text-terminal-red"
         : "border-terminal-cyan/25 text-terminal-cyan";
 
-  return <span className={cn("inline-flex rounded-md border bg-white/[0.045] px-2.5 py-1 font-mono text-xs", className)}>{sentiment}</span>;
+  return <span className={cn("inline-flex rounded-md border bg-terminal-panel2 px-2.5 py-1 font-mono text-xs", className)}>{sentiment}</span>;
 }
 
 function EmptyState({ message }: { message: string }) {
-  return <div className="rounded-lg border border-white/10 bg-white/[0.045] p-6 text-sm text-terminal-muted">{message}</div>;
+  return <div className="rounded-lg border border-terminal-line bg-terminal-panel2 p-6 text-sm text-terminal-muted">{message}</div>;
 }
 
 function filterFeed(items: NewsItem[], category: string) {

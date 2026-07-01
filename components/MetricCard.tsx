@@ -17,8 +17,8 @@ export function MetricCard({
 }) {
   const positive = (change ?? 0) >= 0;
   const className = cn(
-    "min-w-0 rounded-lg border border-white/[0.10] bg-white/[0.035] p-4 transition hover:border-white/[0.18] hover:bg-white/[0.05]",
-    selected && "border-terminal-cyan/40 bg-terminal-cyan/[0.09]"
+    "min-w-0 rounded-xl border border-terminal-line bg-terminal-panel p-4 transition hover:border-terminal-line hover:bg-terminal-panel2/50",
+    selected && "border-terminal-cyan/40 bg-terminal-cyan/[0.06]"
   );
   const content = (
     <>

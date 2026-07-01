@@ -5,7 +5,6 @@ import {
   fetchHistoricalPrices as fetchMarketHistoricalPrices,
   fetchQuote as fetchMarketQuote
 } from "@/lib/market-data-service";
-import { fetchTickerNews as fetchProviderTickerNews } from "@/lib/news-service";
 
 export type AssetType = "stock" | "ETF" | "index" | "future" | "crypto" | "unknown";
 
@@ -378,8 +377,27 @@ export function fetchFutureProfile(symbol: string) {
 }
 
 export function fetchPeers(symbol: string): Ticker[] {
-  void symbol;
-  return [];
+  const normalized = symbol.toUpperCase();
+  const peerMap: Record<string, string[]> = {
+    NVDA: ["AMD", "AVGO", "TSM", "ARM", "MU", "INTC", "QCOM"],
+    AMD: ["NVDA", "AVGO", "TSM", "MU", "INTC", "QCOM"],
+    MU: ["NVDA", "AMD", "AVGO", "TSM", "INTC", "QCOM"],
+    AAPL: ["MSFT", "GOOGL", "AMZN", "META"],
+    TSLA: ["GM", "F", "RIVN", "NIO"]
+  };
+
+  const symbols = peerMap[normalized] ?? [];
+  return symbols.map((peerSymbol) => {
+    const overview = fetchTickerOverview(peerSymbol);
+    return {
+      symbol: peerSymbol,
+      name: overview.name,
+      price: 0,
+      change: 0,
+      volume: overview.volume,
+      sector: overview.assetType === "stock" ? overview.sector : "Unavailable"
+    };
+  });
 }
 
 export function fetchCompanyProfile(symbol: string) {
@@ -403,6 +421,3 @@ export function fetchEarnings(symbol: string) {
   return fetchMarketEarnings(symbol);
 }
 
-export function fetchTickerNews(symbol: string) {
-  return fetchProviderTickerNews(symbol);
-}

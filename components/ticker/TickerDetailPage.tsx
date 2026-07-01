@@ -98,6 +98,20 @@ type TickerDetail = {
   etfProfile: ETFProfile | null;
   futureProfile: FutureProfile | null;
   peers: Ticker[];
+  debugMeta: {
+    quoteStatus: string;
+    historyStatus: string;
+    selectedHistoryProvider: string;
+    selectedQuoteProvider: string;
+    requestedRange: string;
+    actualInterval: string;
+    candleCount: number;
+    keyStatsStatus: string;
+    earningsStatus: string;
+    peerStatus: string;
+    insightInputsAvailable: string[];
+    unavailableReasons: string[];
+  };
 };
 
 const fundamentalColumns: Column<Fundamental>[] = [
@@ -122,35 +136,61 @@ const newsColumns: Column<RelatedNews>[] = [
 
 export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }) {
   const symbol = decodeURIComponent(rawSymbol).trim().toUpperCase();
-  const [quotePayload, profilePayload, historyPayload, newsPayload, technicalPayload, fundamentalsPayload, earningsPayload, peers] = await Promise.all([
+  const [quotePayload, profilePayload, newsPayload, technicalPayload, fundamentalsPayload, earningsPayload, peers] = await Promise.all([
     fetchRealQuote(symbol),
     fetchRealProfile(symbol),
-    fetchRealHistory(symbol),
     fetchRealTickerNews(symbol),
     fetchRealTechnicals(symbol),
     fetchRealFundamentals(symbol),
     fetchRealEarnings(symbol),
     fetchRealPeers(symbol)
   ]);
+  const [history1D, history5D, history1Mo, history3Mo, history6Mo, historyYtd, history1Y, history5Y] = await Promise.all([
+    fetchRealHistory(symbol, { range: "1D", interval: "5m" }),
+    fetchRealHistory(symbol, { range: "5D", interval: "30m" }),
+    fetchRealHistory(symbol, { range: "1Mo", interval: "1d" }),
+    fetchRealHistory(symbol, { range: "3Mo", interval: "1d" }),
+    fetchRealHistory(symbol, { range: "6Mo", interval: "1d" }),
+    fetchRealHistory(symbol, { range: "YTD", interval: "1d" }),
+    fetchRealHistory(symbol, { range: "1Y", interval: "1d" }),
+    fetchRealHistory(symbol, { range: "5Y", interval: "1wk" })
+  ]);
   const ratingsPayload = await fetchRatingsSignal(symbol, newsPayload.data ?? []);
   const detail = buildTickerDetail(symbol, {
     quote: quotePayload.data,
     profile: profilePayload.data,
-    candles: historyPayload.data?.candles ?? [],
+    chartByRange: {
+      "1D": history1D.data?.candles ?? [],
+      "5D": history5D.data?.candles ?? [],
+      "1Mo": history1Mo.data?.candles ?? [],
+      "3Mo": history3Mo.data?.candles ?? [],
+      "6Mo": history6Mo.data?.candles ?? [],
+      YTD: historyYtd.data?.candles ?? [],
+      "1Y": history1Y.data?.candles ?? [],
+      "5Y": history5Y.data?.candles ?? []
+    },
     news: newsPayload.data ?? [],
     technicals: technicalPayload.data ?? [],
     fundamentals: fundamentalsPayload.data ?? [],
     earnings: earningsPayload.data ?? [],
     ratings: ratingsPayload.data,
     ratingsMeta: ratingsPayload.meta,
-    peers
+    peers,
+    payloads: {
+      quotePayload,
+      profilePayload,
+      history5D,
+      fundamentalsPayload,
+      earningsPayload,
+      newsPayload
+    }
   });
 
   if (!detail) {
     return (
       <TerminalShell active="" title="Ticker not found" subtitle="The requested symbol could not be resolved.">
         <Panel title="Ticker not found">
-          <div className="rounded-lg border border-white/10 bg-white/[0.045] p-6 text-sm text-terminal-muted">Ticker not found</div>
+          <div className="rounded-lg border border-terminal-line bg-terminal-panel2 p-6 text-sm text-terminal-muted">Ticker not found</div>
         </Panel>
       </TerminalShell>
     );
@@ -162,7 +202,7 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
       title={`${detail.symbol} Research`}
       subtitle="Price chart, key stats, setup analysis, earnings, latest news, peer comparison, and AI insight."
     >
-      <div className="grid gap-3">
+      <div className="grid gap-4 md:gap-5">
         <Panel
           title={
             <>
@@ -181,13 +221,13 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
 
         {detail.unavailableFields.length ? (
           <Panel title="Some data unavailable">
-            <div className="rounded-lg border border-terminal-amber/20 bg-white/[0.045] p-4 text-sm text-terminal-amber">
+            <div className="rounded-lg border border-terminal-amber/20 bg-terminal-panel2 p-4 text-sm text-terminal-amber">
               Data unavailable from configured providers: {detail.unavailableFields.join(", ")}.
             </div>
           </Panel>
         ) : null}
 
-        <div className="grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
           <InteractivePriceChart
             title={`${detail.symbol} Price Chart`}
             symbol={detail.symbol}
@@ -204,7 +244,7 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
           </Panel>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[0.8fr_1.2fr]">
+        <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
           <Panel title="Technical Indicators">
             <div className="grid gap-2 sm:grid-cols-2">
               {detail.technicals.map((indicator) => (
@@ -222,23 +262,29 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
 
         <OpportunityAnalysis analysis={detail.opportunityAnalysis} />
 
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-2">
           <Panel title="Earnings Info">
-            <DataTable columns={earningsColumns} rows={detail.earnings} />
+            {detail.earnings.length ? (
+              <DataTable columns={earningsColumns} rows={detail.earnings} />
+            ) : (
+              <div className="rounded-lg border border-terminal-line bg-terminal-panel2 p-4 text-sm text-terminal-muted">
+                Earnings data unavailable from configured providers.
+              </div>
+            )}
           </Panel>
 
           <Panel title="Latest News">
             <div className="grid gap-2">
               {detail.news.map((item) => (
-                <article key={`${item.time}-${item.headline}`} className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
-                  <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-terminal-muted">
+                <article key={`${item.time}-${item.headline}`} className="rounded-lg border border-terminal-line bg-terminal-panel2 p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-terminal-muted">
                     <SimpleLocalTime value={item.time} timestampValid={item.timestampValid} />
                     <span aria-hidden="true">·</span>
                     <span>{item.source}</span>
                   </div>
                   <h3 className="mt-2 text-[0.95rem] font-semibold leading-5 tracking-[-0.01em] text-terminal-text">{item.headline}</h3>
                   {item.snippet ? <p className="mt-2 text-xs leading-5 text-terminal-muted">{item.snippet}</p> : null}
-                  <div className="mt-3 flex flex-wrap items-center gap-3 font-mono text-xs">
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                     <a href={item.url} target="_blank" rel="noreferrer" className="text-terminal-cyan underline-offset-4 hover:underline">
                       Read original article
                     </a>
@@ -250,30 +296,36 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
         </div>
 
         <Panel title="Peer Comparison">
-          <DataTable
-            columns={[
-              { key: "symbol", header: "Ticker", render: (row: Ticker) => <TickerLink symbol={row.symbol} /> },
-              { key: "name", header: "Name", render: (row: Ticker) => row.name },
-              { key: "price", header: "Price", align: "right", render: (row: Ticker) => row.price > 0 ? `$${row.price.toFixed(2)}` : "Unavailable" },
-              { key: "change", header: "Daily %", align: "right", render: (row: Ticker) => formatChange(row.change) },
-              { key: "size", header: detail.assetType === "ETF" ? "AUM" : "Market Cap", align: "right", render: (row: Ticker) => peerOverviewValue(row.symbol, detail.assetType === "ETF" ? "marketCap" : "marketCap") },
-              { key: "valuation", header: detail.assetType === "ETF" ? "Expense Ratio" : detail.assetType === "future" ? "Exchange" : "P/E", align: "right", render: (row: Ticker) => peerOverviewValue(row.symbol, detail.assetType === "ETF" ? "expenseRatio" : detail.assetType === "future" ? "exchange" : "pe") },
-              { key: "growth", header: detail.assetType === "ETF" ? "Dividend Yield" : detail.assetType === "future" ? "Category" : "Revenue Growth", align: "right", render: (row: Ticker) => peerOverviewValue(row.symbol, detail.assetType === "ETF" ? "dividendYield" : detail.assetType === "future" ? "category" : "revenueGrowth") }
-            ]}
-            rows={detail.peers}
-          />
+          {detail.peers.length ? (
+            <DataTable
+              columns={[
+                { key: "symbol", header: "Ticker", render: (row: Ticker) => <TickerLink symbol={row.symbol} /> },
+                { key: "name", header: "Name", render: (row: Ticker) => row.name },
+                { key: "price", header: "Price", align: "right", render: (row: Ticker) => row.price > 0 ? `$${row.price.toFixed(2)}` : "Unavailable" },
+                { key: "change", header: "Daily %", align: "right", render: (row: Ticker) => formatChange(row.change) },
+                { key: "size", header: detail.assetType === "ETF" ? "AUM" : "Market Cap", align: "right", render: (row: Ticker) => peerOverviewValue(row.symbol, detail.assetType === "ETF" ? "marketCap" : "marketCap") },
+                { key: "valuation", header: detail.assetType === "ETF" ? "Expense Ratio" : detail.assetType === "future" ? "Exchange" : "P/E", align: "right", render: (row: Ticker) => peerOverviewValue(row.symbol, detail.assetType === "ETF" ? "expenseRatio" : detail.assetType === "future" ? "exchange" : "pe") },
+                { key: "growth", header: detail.assetType === "ETF" ? "Dividend Yield" : detail.assetType === "future" ? "Category" : "Revenue Growth", align: "right", render: (row: Ticker) => peerOverviewValue(row.symbol, detail.assetType === "ETF" ? "dividendYield" : detail.assetType === "future" ? "category" : "revenueGrowth") }
+              ]}
+              rows={detail.peers}
+            />
+          ) : (
+            <div className="rounded-lg border border-terminal-line bg-terminal-panel2 p-4 text-sm text-terminal-muted">
+              Peer data unavailable from configured providers.
+            </div>
+          )}
         </Panel>
 
         <AIInsight
-          title={`${detail.symbol} AI Insight`}
+          title={`${detail.symbol} StockerView Insight`}
           analysis={generateSourceGroundedAnalysis({
             id: `ticker-${detail.symbol}`,
             title: `${detail.symbol} Source-Grounded Research`,
-            topic: `${detail.name} price action, fundamentals, earnings, latest news, analyst target range, risk score, catalysts, and research verdict`,
+            topic: `${detail.name} price action, trend context, key stats, earnings coverage, peer comparison and news context`,
             sources: fetchTickerNews(detail.symbol),
-            missingData: detail.unavailableFields.length ? detail.unavailableFields : ["Real-time intraday tape", "Full analyst reports", "Options positioning"],
+            missingData: detail.unavailableFields,
             confidence: detail.unavailableFields.length ? "Low" : "Medium",
-            dataCompleteness: detail.unavailableFields.length ? 58 : 82
+            dataCompleteness: detail.unavailableFields.length ? 56 : 84
           })}
         />
 
@@ -287,7 +339,7 @@ function buildTickerDetail(
   providerData: {
     quote: Awaited<ReturnType<typeof fetchRealQuote>>["data"];
     profile: Awaited<ReturnType<typeof fetchRealProfile>>["data"];
-    candles: OhlcvCandle[];
+    chartByRange: Record<ChartTimeframe, OhlcvCandle[]>;
     news: NormalizedNewsArticle[];
     technicals: TechnicalIndicator[];
     fundamentals: Fundamental[];
@@ -295,6 +347,14 @@ function buildTickerDetail(
     ratings: NormalizedRatings;
     ratingsMeta: RatingsMeta;
     peers: Ticker[];
+    payloads: {
+      quotePayload: Awaited<ReturnType<typeof fetchRealQuote>>;
+      profilePayload: Awaited<ReturnType<typeof fetchRealProfile>>;
+      history5D: Awaited<ReturnType<typeof fetchRealHistory>>;
+      fundamentalsPayload: Awaited<ReturnType<typeof fetchRealFundamentals>>;
+      earningsPayload: Awaited<ReturnType<typeof fetchRealEarnings>>;
+      newsPayload: Awaited<ReturnType<typeof fetchRealTickerNews>>;
+    };
   }
 ): TickerDetail | null {
   if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)) {
@@ -311,12 +371,12 @@ function buildTickerDetail(
   const change = providerData.quote?.changePercent ?? overview.change;
   const name = providerData.profile?.companyName ?? providerData.quote?.name ?? overview.name;
   const sector = providerData.profile?.sector ?? "Unavailable";
-  const revenueGrowth = "Unavailable";
-  const epsGrowth = "Unavailable";
+  const revenueGrowth = fundamentalValue(providerData.fundamentals, "Revenue Growth");
+  const epsGrowth = fundamentalValue(providerData.fundamentals, "EPS Growth");
   const volume = providerData.quote?.volume ? providerData.quote.volume.toLocaleString() : "Unavailable";
   const marketCap = providerData.quote?.marketCap ?? providerData.profile?.marketCap;
   const pe = fundamentalValue(providerData.fundamentals, "P/E");
-  const analystTargetRange = "Data unavailable";
+  const analystTargetRange = fundamentalValue(providerData.fundamentals, "Analyst Target Range") === "Unavailable" ? "Unavailable" : fundamentalValue(providerData.fundamentals, "Analyst Target Range");
   const riskScore = 0;
   const riskLabel = "Data unavailable";
   const catalysts = ["Data unavailable"];
@@ -328,7 +388,7 @@ function buildTickerDetail(
     technicals: providerData.technicals,
     fundamentals: providerData.fundamentals,
     news: providerData.news,
-    candles: providerData.candles,
+    candles: providerData.chartByRange["1Y"] ?? [],
     ratings: providerData.ratings,
     ratingsMeta: providerData.ratingsMeta
   });
@@ -352,12 +412,17 @@ function buildTickerDetail(
     riskLabel,
     forwardPe: "Unavailable",
     grossMargin: fundamentalValue(providerData.fundamentals, "Gross Margin"),
-    debtEquity: "Unavailable",
-    averageVolume: "Unavailable",
-    chart: buildChart(providerData.candles),
+    debtEquity: fundamentalValue(providerData.fundamentals, "Debt/Equity"),
+    averageVolume: fundamentalValue(providerData.fundamentals, "Average Volume"),
+    chart: providerData.chartByRange,
     keyStats: [
       { label: "Sector", value: sector, detail: "Provider classification" },
       { label: "Relative Volume", value: relativeVolumeValue(providerData.technicals), detail: "Versus available average volume" },
+      { label: "Forward P/E", value: fundamentalValue(providerData.fundamentals, "Forward P/E"), detail: "Provider estimate" },
+      { label: "Revenue Growth", value: revenueGrowth, detail: "Provider growth metric" },
+      { label: "EPS Growth", value: epsGrowth, detail: "Provider growth metric" },
+      { label: "Debt/Equity", value: fundamentalValue(providerData.fundamentals, "Debt/Equity"), detail: "Balance sheet leverage" },
+      { label: "Average Volume", value: fundamentalValue(providerData.fundamentals, "Average Volume"), detail: "Provider liquidity" },
       ...(overview.assetType === "ETF" && overview.etfProfile
         ? [
             { label: "Expense Ratio", value: overview.etfProfile.expenseRatio, detail: "Provider ETF profile" },
@@ -376,7 +441,7 @@ function buildTickerDetail(
     verdict: "Research verdict unavailable until provider data is connected.",
     unavailableFields: [
       ...(!providerData.quote ? ["quote"] : []),
-      ...(!providerData.candles.length ? ["chart history"] : []),
+      ...(!Object.values(providerData.chartByRange).some((rows) => rows.length) ? ["chart history"] : []),
       ...(!providerData.fundamentals.length ? ["fundamentals"] : []),
       ...(!providerData.earnings.length ? ["earnings"] : []),
       ...(!providerData.news.length ? ["news"] : []),
@@ -387,12 +452,40 @@ function buildTickerDetail(
     ratingsMeta: providerData.ratingsMeta,
     etfProfile: overview.assetType === "ETF" ? overview.etfProfile : null,
     futureProfile: null,
-    peers: providerData.peers
+    peers: providerData.peers,
+    debugMeta: {
+      quoteStatus: providerData.payloads.quotePayload.status,
+      historyStatus: providerData.payloads.history5D.status,
+      selectedHistoryProvider: providerData.payloads.history5D.source,
+      selectedQuoteProvider: providerData.payloads.quotePayload.source,
+      requestedRange: "5D",
+      actualInterval: String(providerData.payloads.history5D.meta?.requestedInterval ?? "30m"),
+      candleCount: providerData.payloads.history5D.meta?.candleCount ?? providerData.chartByRange["5D"].length,
+      keyStatsStatus: providerData.payloads.fundamentalsPayload.status,
+      earningsStatus: providerData.payloads.earningsPayload.status,
+      peerStatus: providerData.peers.length ? "available" : "unavailable",
+      insightInputsAvailable: [
+        ...(providerData.quote ? ["quote"] : []),
+        ...(providerData.chartByRange["5D"].length ? ["history"] : []),
+        ...(providerData.fundamentals.length ? ["keyStats"] : []),
+        ...(providerData.earnings.length ? ["earnings"] : []),
+        ...(providerData.peers.length ? ["peers"] : []),
+        ...(providerData.news.length ? ["news"] : [])
+      ],
+      unavailableReasons: [
+        ...(!providerData.quote ? [providerData.payloads.quotePayload.error ?? "Quote unavailable"] : []),
+        ...(!providerData.chartByRange["5D"].length ? [providerData.payloads.history5D.error ?? "History unavailable"] : []),
+        ...(!providerData.fundamentals.length ? [providerData.payloads.fundamentalsPayload.error ?? "Key stats unavailable"] : []),
+        ...(!providerData.earnings.length ? [providerData.payloads.earningsPayload.error ?? "Earnings unavailable"] : []),
+        ...(!providerData.peers.length ? ["Peer data unavailable from configured providers."] : [])
+      ]
+    }
   };
 }
 
 async function fetchRealPeers(symbol: string): Promise<Ticker[]> {
   const peers = fetchPeers(symbol);
+  if (!peers.length) return [];
   const quotes = await Promise.all(peers.map((peer) => fetchRealQuote(peer.symbol)));
 
   return peers.map((peer, index) => {
@@ -419,26 +512,6 @@ function relativeVolumeValue(rows: TechnicalIndicator[]) {
 function formatChange(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}%`;
-}
-
-function buildChart(candles: OhlcvCandle[]) {
-  if (!candles.length) return buildEmptyCandleSet();
-  return {
-    "1D": candles.slice(-1),
-    "5D": candles.slice(-5),
-    "1Mo": candles.slice(-22),
-    "3Mo": candles.slice(-66),
-    "6Mo": candles.slice(-132),
-    YTD: candles.filter((candle) => new Date(candle.time).getUTCFullYear() === new Date().getUTCFullYear()),
-    "1Y": candles.slice(-252),
-    "5Y": candles,
-    "1m": candles,
-    "5m": candles,
-    "15m": candles,
-    "30m": candles,
-    "1h": candles,
-    "4h": candles
-  };
 }
 
 function articleToRelatedNews(article: NormalizedNewsArticle): RelatedNews {
@@ -546,8 +619,8 @@ function formatAssetType(assetType: AssetType) {
 
 function ResearchCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
-      <div className="font-mono text-xs text-terminal-muted">{label}</div>
+    <div className="rounded-xl border border-terminal-line bg-terminal-panel2 p-3">
+      <div className="text-xs text-terminal-muted">{label}</div>
       <div className="mt-2 text-xl font-semibold">{value}</div>
       {detail ? <div className="mt-2 text-xs leading-5 text-terminal-muted">{detail}</div> : null}
     </div>
@@ -565,7 +638,7 @@ function ETFDetails({ profile }: { profile: ETFProfile }) {
           <ResearchCard label="Dividend Yield" value={profile.dividendYield} detail="Provider distribution yield" />
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
-          <div className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
+          <div className="rounded-lg border border-terminal-line bg-terminal-panel2 p-3">
             <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">Top Holdings</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {profile.topHoldings.map((symbol) => (
@@ -573,7 +646,7 @@ function ETFDetails({ profile }: { profile: ETFProfile }) {
               ))}
             </div>
           </div>
-          <div className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
+          <div className="rounded-lg border border-terminal-line bg-terminal-panel2 p-3">
             <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">Sector Exposure</div>
             <div className="mt-2 grid gap-2">
               {profile.sectorExposure.map((item) => (
@@ -618,9 +691,9 @@ function FuturesDetails({ profile }: { profile: FutureProfile }) {
 
 function OpportunityAnalysis({ analysis }: { analysis: OpportunityScoreResult }) {
   return (
-    <Panel title="Setup Analysis" action={<span className="font-mono text-xs text-terminal-muted">Research signal only. Not financial advice.</span>}>
-      <div className="grid gap-3 xl:grid-cols-[220px_1fr]">
-        <div className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
+    <Panel title="Setup Analysis" action={<span className="text-xs text-terminal-muted">Research signal only. Not financial advice.</span>}>
+      <div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+        <div className="rounded-xl border border-terminal-line bg-terminal-panel2 p-4">
           <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">Setup Score</div>
           <div className="mt-3 text-4xl font-semibold tracking-tight text-terminal-cyan">
             {analysis.score === null ? "Limited data" : `${analysis.score}/100`}
@@ -638,7 +711,7 @@ function OpportunityAnalysis({ analysis }: { analysis: OpportunityScoreResult })
 
         <div className="grid gap-3">
           {analysis.isUnavailable ? (
-            <div className="rounded-lg border border-terminal-amber/20 bg-white/[0.045] p-4">
+            <div className="rounded-xl border border-terminal-amber/20 bg-terminal-panel2 p-4">
               <div className="text-sm font-semibold text-terminal-amber">Setup Analysis unavailable</div>
               <p className="mt-2 text-sm leading-6 text-terminal-muted">{analysis.unavailableReason}</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -655,13 +728,13 @@ function OpportunityAnalysis({ analysis }: { analysis: OpportunityScoreResult })
           </div>
         </div>
       </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <BulletBlock title="Why It Appears Interesting" items={analysis.drivers} />
         <BulletBlock title="Why It May Be Down" items={analysis.whyDown} />
         <BulletBlock title="What Could Help Recovery" items={analysis.recoveryCatalysts} />
         <BulletBlock title="Main Risks" items={analysis.risks} />
       </div>
-      <div className="mt-3">
+      <div className="mt-4">
         <BulletBlock title="Catalyst Watch" items={analysis.catalystWatch.length ? analysis.catalystWatch : ["Not enough real data available for this signal."]} columns />
       </div>
     </Panel>
@@ -672,7 +745,7 @@ function SignalCard({ signal }: { signal: OpportunityScoreResult["signalScores"]
   const available = signal.status === "available" || signal.status === "partial";
   const statusLabel = signal.status === "partial" ? "Partial" : available ? "Available" : "Unavailable";
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
+    <div className="rounded-xl border border-terminal-line bg-terminal-panel2 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">{signal.label}</div>
         <span className={available ? "font-mono text-xs text-terminal-green" : "font-mono text-xs text-terminal-muted"}>
@@ -689,7 +762,7 @@ function SignalCard({ signal }: { signal: OpportunityScoreResult["signalScores"]
 function RatingsSignalDetails({ ratings }: { ratings?: NormalizedRatings }) {
   if (!ratings || ratings.status === "unavailable" || ratings.status === "error") {
     return (
-      <div className="mt-3 rounded-md border border-white/10 bg-black/10 p-2 text-xs leading-5 text-terminal-muted">
+      <div className="mt-3 rounded-md border border-terminal-line bg-terminal-panel p-2 text-xs leading-5 text-terminal-muted">
         Ratings unavailable. Not enough real analyst rating data from configured providers.
       </div>
     );
@@ -760,7 +833,7 @@ function SignalList({ title, items, fallback }: { title: string; items: string[]
 
 function BulletBlock({ title, items, columns = false }: { title: string; items: string[]; columns?: boolean }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.045] p-3">
+    <div className="rounded-xl border border-terminal-line bg-terminal-panel2 p-3">
       <div className="font-mono text-xs uppercase tracking-[0.12em] text-terminal-muted">{title}</div>
       <ul className={columns ? "mt-3 grid gap-2 md:grid-cols-2" : "mt-3 space-y-2"}>
         {items.map((item) => (

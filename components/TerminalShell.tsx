@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Activity, BriefcaseBusiness, Landmark, Orbit, Rss, SunMedium } from "lucide-react";
-import { TerminalStatus } from "@/components/TerminalStatus";
 import { footerResearchDisclaimer } from "@/lib/research-engine";
 import { cn } from "@/lib/utils";
 
@@ -24,12 +23,12 @@ export function TerminalShell({
   children: React.ReactNode;
 }) {
   return (
-    <main className="terminal-grid min-h-screen p-2 text-terminal-text md:p-6">
-      <div className="glass-panel mx-auto flex min-h-[calc(100vh-16px)] w-full min-w-0 max-w-[1540px] overflow-hidden rounded-2xl border border-terminal-line/70 shadow-glow md:min-h-[calc(100vh-48px)]">
-        <aside className="hidden w-64 shrink-0 border-r border-terminal-line/60 bg-white/75 lg:block">
-          <div className="border-b border-terminal-line/60 p-6">
+    <main className="terminal-grid min-h-screen px-4 py-5 text-terminal-text md:px-8 md:py-8">
+      <div className="glass-panel mx-auto flex min-h-[calc(100vh-40px)] w-full min-w-0 max-w-[1440px] overflow-hidden rounded-2xl border border-terminal-line shadow-glow">
+        <aside className="hidden w-64 shrink-0 border-r border-terminal-line bg-terminal-panel lg:block">
+          <div className="border-b border-terminal-line p-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-terminal-cyan/25 bg-terminal-cyan/[0.10] text-terminal-cyan">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-terminal-cyan/25 bg-terminal-cyan/[0.08] text-terminal-cyan">
                 <Orbit className="h-4 w-4" />
               </div>
               <div>
@@ -48,11 +47,11 @@ export function TerminalShell({
                   href={item.href}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-terminal-muted transition",
-                    selected && "bg-terminal-cyan/[0.12] text-terminal-text shadow-[inset_0_0_0_1px_rgba(98,184,211,0.26)]",
+                    selected && "bg-terminal-cyan/[0.10] text-terminal-cyan shadow-[inset_0_0_0_1px_rgba(2,132,199,0.18)]",
                     !selected && "hover:bg-terminal-panel2 hover:text-terminal-text"
                   )}
                 >
-                  {selected ? <span className="absolute left-0 h-5 w-1 rounded-full bg-terminal-cyan/80" /> : null}
+                  {selected ? <span className="absolute left-0 h-5 w-0.5 rounded-full bg-terminal-cyan" /> : null}
                   <Icon className={cn("h-4 w-4", selected && "text-terminal-cyan")} />
                   {item.label}
                 </Link>
@@ -62,20 +61,17 @@ export function TerminalShell({
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className="border-b border-terminal-line/60 bg-white/70">
-            <div className="flex flex-col gap-5 px-5 py-6 md:flex-row md:items-center md:justify-between md:px-6">
+          <header className="border-b border-terminal-line bg-terminal-panel">
+            <div className="flex flex-col gap-3 px-6 py-6 md:px-8">
               <div>
-                <div className="inline-flex rounded-full border border-terminal-line/70 bg-terminal-panel2 px-3 py-1 text-xs font-medium text-terminal-muted">
+                <div className="inline-flex rounded-full border border-terminal-line bg-terminal-panel2 px-3 py-1 text-xs font-medium text-terminal-muted">
                   StockerView
                 </div>
                 <h1 className="mt-3 text-3xl font-bold tracking-tight text-terminal-text md:text-[2rem]">{title}</h1>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-terminal-muted">{subtitle}</p>
-              </div>
-              <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
-                <TerminalStatus />
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-terminal-muted">{subtitle}</p>
               </div>
             </div>
-            <nav className="grid grid-cols-2 border-t border-terminal-line/60 bg-white/70 lg:hidden">
+            <nav className="grid grid-cols-2 border-t border-terminal-line bg-terminal-panel lg:hidden">
               {navItems.map((item) => {
                 const Icon = item.icon;
 
@@ -84,7 +80,7 @@ export function TerminalShell({
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-2 border-r border-terminal-line/60 px-3 py-2.5 text-xs text-terminal-muted last:border-r-0",
+                        "flex items-center gap-2 border-r border-terminal-line px-3 py-2.5 text-xs text-terminal-muted last:border-r-0",
                       active === item.href && "bg-terminal-cyan/[0.10] text-terminal-text"
                     )}
                   >
@@ -96,9 +92,9 @@ export function TerminalShell({
             </nav>
           </header>
 
-          <div className="terminal-scrollbar min-w-0 flex-1 overflow-y-auto p-4 md:p-5">
+          <div className="terminal-scrollbar min-w-0 flex-1 overflow-y-auto p-5 md:p-6">
             {children}
-            <footer className="mt-5 rounded-xl border border-terminal-line/70 bg-white/75 p-4 text-xs leading-5 text-terminal-muted">
+            <footer className="mt-6 rounded-xl border border-terminal-line bg-terminal-panel p-4 text-xs leading-5 text-terminal-muted">
               {footerResearchDisclaimer}
             </footer>
           </div>

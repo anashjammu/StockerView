@@ -4,16 +4,20 @@
 
 :root {
   color-scheme: light;
-  background: #f7f9fc;
-  --app-bg: #f7f9fc;
-  --app-bg-soft: #edf2f8;
+  background: #f8fafc;
+  --app-bg: #f8fafc;
+  --app-bg-soft: #f1f5f9;
   --app-panel: #ffffff;
-  --app-panel-muted: #f8fbff;
-  --app-border: rgba(15, 23, 42, 0.10);
-  --app-border-strong: rgba(15, 23, 42, 0.16);
-  --app-text: #111827;
-  --app-muted: #5f6b7d;
-  --app-accent: #2f80a3;
+  --app-panel-muted: #f1f5f9;
+  --app-border: #e2e8f0;
+  --app-border-strong: #cbd5e1;
+  --app-text: #0f172a;
+  --app-muted: #64748b;
+  --app-muted-soft: #94a3b8;
+  --app-accent: #0284c7;
+  --app-positive: #059669;
+  --app-negative: #dc2626;
+  --app-warning: #d97706;
   --font-geist-sans: Inter, "Geist Sans", "Aptos", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-geist-mono: "Geist Mono", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
@@ -25,9 +29,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--app-accent) 12%, white), transparent 42rem),
-    linear-gradient(160deg, var(--app-bg) 0%, var(--app-bg-soft) 100%);
+  background: linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-soft) 100%);
   color: var(--app-text);
   font-family: var(--font-geist-sans);
   font-feature-settings: "cv02", "cv03", "cv04", "ss01";
@@ -46,9 +48,7 @@ h3 {
 
 @layer components {
   .terminal-grid {
-    background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--app-accent) 8%, white), transparent 36rem),
-      linear-gradient(165deg, var(--app-bg) 0%, var(--app-bg-soft) 100%);
+    background: linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-soft) 100%);
   }
 
   .terminal-scrollbar {
@@ -57,31 +57,31 @@ h3 {
   }
 
   .glass-panel {
-    background: color-mix(in srgb, var(--app-panel) 96%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--app-panel);
+    backdrop-filter: none;
   }
 
   .terminal-input {
-    height: 2.65rem;
+    height: 2.4rem;
     width: 100%;
-    border-radius: 0.65rem;
+    border-radius: 0.6rem;
     border: 1px solid var(--app-border);
-    background: color-mix(in srgb, var(--app-panel-muted) 92%, transparent);
-    padding: 0 0.9rem;
+    background: var(--app-panel);
+    padding: 0 0.8rem;
     font-family: var(--font-geist-sans);
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     color: var(--app-text);
     outline: none;
     transition: border-color 160ms ease, box-shadow 160ms ease;
   }
 
   .terminal-input::placeholder {
-    color: var(--app-muted);
+    color: var(--app-muted-soft);
   }
 
   .terminal-input:focus {
-    border-color: color-mix(in srgb, var(--app-accent) 65%, white);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--app-accent) 70%, white);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 14%, transparent);
   }
 }
 

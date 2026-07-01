@@ -119,23 +119,50 @@ export function generateSourceGroundedAnalysis({
 }): AIAnalysis {
   const normalizedSources = normalizeNewsSources(sources);
   const missing = missingData.length ? missingData : ["Provider market data", "Provider news sources"];
+  const hasQuote = !missing.some((item) => item.toLowerCase().includes("quote"));
+  const hasHistory = !missing.some((item) => item.toLowerCase().includes("chart") || item.toLowerCase().includes("history"));
+  const hasFundamentals = !missing.some((item) => item.toLowerCase().includes("fundamental") || item.toLowerCase().includes("key stats"));
+  const hasEarnings = !missing.some((item) => item.toLowerCase().includes("earnings"));
+  const hasPeers = !missing.some((item) => item.toLowerCase().includes("peer"));
+  const hasNews = normalizedSources.length > 0;
+
+  const catalysts = [
+    hasHistory ? "Recent price and trend context is available from real candles." : "Trend context is limited due to missing real candle history.",
+    hasFundamentals ? "Key stats are partially populated from configured providers." : "Fundamental coverage is limited from configured providers.",
+    hasEarnings ? "Earnings fields are available from provider reports." : "Earnings fields are unavailable from configured providers."
+  ];
+
+  const risks = [
+    hasQuote ? "Quote-level context is available but may be delayed by provider." : "Current quote is unavailable from configured providers.",
+    hasPeers ? "Peer context is available for relative comparison." : "Peer comparison is unavailable from configured providers.",
+    hasNews ? "Recent ticker news is present for context." : "No recent ticker-specific news was available."
+  ];
+
+  const summaryFragments = [
+    hasQuote ? "Price context is available." : "Price context is missing.",
+    hasHistory ? "Chart trend inputs are available." : "Chart trend inputs are missing.",
+    hasFundamentals ? "Key stats have partial provider coverage." : "Key stats have limited coverage.",
+    hasEarnings ? "Earnings history is available." : "Earnings history is unavailable.",
+    hasPeers ? "Peer comparison inputs are available." : "Peer comparison inputs are unavailable.",
+    hasNews ? "Recent news context is available." : "Recent news context is unavailable."
+  ];
 
   return {
     mode: "Detailed Analysis",
     confidenceLevel: confidence ?? confidenceLevel,
     dataCompleteness,
     generatedAt: new Date().toISOString(),
-    plainEnglishSummary: `${topic} analysis is unavailable because provider data has not been connected.`,
-    whatHappened: "Data unavailable.",
-    whyItMatters: "Provider data is required before StockerView can generate a source-grounded explanation.",
-    bullCase: "Data unavailable.",
-    bearCase: "Data unavailable.",
-    keyCatalysts: ["Data unavailable"],
-    keyRisks: ["Data unavailable"],
-    valuationContext: "Data unavailable.",
-    technicalContext: "Data unavailable.",
-    newsContext: normalizedSources.length ? "Analysis can reference connected sources." : "Sources unavailable.",
-    macroContext: "Data unavailable.",
+    plainEnglishSummary: `${topic}: ${summaryFragments.join(" ")}`,
+    whatHappened: hasHistory ? "Recent price-series data is available for trend context." : "Price-series trend context is unavailable from configured providers.",
+    whyItMatters: "This insight is rule-based and only reflects available provider data; missing inputs reduce confidence.",
+    bullCase: hasFundamentals ? "Some fundamental inputs are populated, supporting deeper research context." : "Fundamental coverage is limited, so upside context is incomplete.",
+    bearCase: hasEarnings ? "Earnings and estimate context can be compared where available." : "Without earnings coverage, downside risk context remains incomplete.",
+    keyCatalysts: catalysts,
+    keyRisks: risks,
+    valuationContext: hasFundamentals ? "Valuation metrics are drawn from configured provider fields when present." : "Valuation metrics are unavailable from configured providers.",
+    technicalContext: hasHistory ? "Technical context is derived from real candles and trend signals." : "Technical context is unavailable without sufficient candle history.",
+    newsContext: hasNews ? "News context is derived from connected ticker news sources." : "News context unavailable from connected sources.",
+    macroContext: "Macro context is not inferred unless present in connected ticker/news data.",
     missingData: missing,
     sources: normalizedSources
   };

@@ -307,9 +307,10 @@ export async function fetchRealQuote(symbol: string): Promise<ProviderPayload<No
   const route = `api/quote/${symbol}`;
   const providers: Array<() => Promise<AttemptResult<NormalizedQuote>>> = [
     () => fetchFmpQuote(route, symbol),
-    () => fetchFinnhubQuote(route, symbol),
+    () => fetchTwelveDataQuote(route, symbol),
     () => fetchAlphaVantageQuote(route, symbol),
-    () => fetchAlpacaQuote(route, symbol)
+    () => fetchYahooQuote(route, symbol),
+    () => fetchStooqQuote(route, symbol)
   ];
 
   return firstUsable(route, providers);
@@ -317,36 +318,42 @@ export async function fetchRealQuote(symbol: string): Promise<ProviderPayload<No
 
 export async function fetchRealHistory(symbol: string, request: HistoryRequest = {}): Promise<ProviderPayload<NormalizedHistory>> {
   const route = `api/history/${symbol}`;
-  const normalizedInterval = normalizeInterval(request.interval);
+  const resolvedRequest: HistoryRequest = {
+    ...request,
+    interval: resolveHistoryIntervalForRange(request.range, request.interval)
+  };
+  const normalizedInterval = normalizeInterval(resolvedRequest.interval);
   const intraday = normalizedInterval !== "1day";
   const requestedAssetType = inferHistoryAssetType(symbol);
   const providerAttempts: Array<{ provider: string; symbol: string; status: string; candleCount: number; error?: string }> = [];
 
-  const indexResult = await buildMarketIndexHistoryChain(route, symbol, request);
+  const indexResult = await buildMarketIndexHistoryChain(route, symbol, resolvedRequest);
   if (indexResult !== null) {
     const result = indexResult;
     if (result?.data) {
       logFinal(route, result.source, result.status, true, result.error);
-      return withHistoryMeta(withUpdatedAt(result), symbol, request, requestedAssetType, "index", providerAttempts, result.source);
+      return withHistoryMeta(withUpdatedAt(result), symbol, resolvedRequest, requestedAssetType, "index", providerAttempts, result.source);
     }
 
     const error = result?.error ?? "Index history unavailable.";
     logFinal(route, "Unavailable", "unavailable", false, error);
-    return withHistoryMeta(unavailable(error), symbol, request, requestedAssetType, "index", providerAttempts, null);
+    return withHistoryMeta(unavailable(error), symbol, resolvedRequest, requestedAssetType, "index", providerAttempts, null);
   }
 
   const providers: Array<{ label: string; run: () => Promise<AttemptResult<NormalizedHistory>> }> = intraday
     ? [
-        { label: "Alpaca", run: () => fetchAlpacaHistory(route, symbol, request) },
-        { label: "Twelve Data", run: () => fetchTwelveDataHistory(route, symbol, request) },
-        { label: "Alpha Vantage", run: () => fetchAlphaVantageHistory(route, symbol, request) },
-        { label: "Financial Modeling Prep", run: () => fetchFmpHistory(route, symbol, request) }
+        { label: "Financial Modeling Prep", run: () => fetchFmpHistory(route, symbol, resolvedRequest) },
+        { label: "Twelve Data", run: () => fetchTwelveDataHistory(route, symbol, resolvedRequest) },
+        { label: "Alpha Vantage", run: () => fetchAlphaVantageHistory(route, symbol, resolvedRequest) },
+        { label: "Yahoo Finance", run: () => fetchYahooHistory(route, symbol, resolvedRequest) },
+        { label: "Stooq", run: () => fetchStooqHistory(route, symbol, resolvedRequest) }
       ]
     : [
-        { label: "Financial Modeling Prep", run: () => fetchFmpHistory(route, symbol, request) },
-        { label: "Alpha Vantage", run: () => fetchAlphaVantageHistory(route, symbol, request) },
-        { label: "Twelve Data", run: () => fetchTwelveDataHistory(route, symbol, request) },
-        { label: "Alpaca", run: () => fetchAlpacaHistory(route, symbol, request) }
+        { label: "Financial Modeling Prep", run: () => fetchFmpHistory(route, symbol, resolvedRequest) },
+        { label: "Twelve Data", run: () => fetchTwelveDataHistory(route, symbol, resolvedRequest) },
+        { label: "Alpha Vantage", run: () => fetchAlphaVantageHistory(route, symbol, resolvedRequest) },
+        { label: "Yahoo Finance", run: () => fetchYahooHistory(route, symbol, resolvedRequest) },
+        { label: "Stooq", run: () => fetchStooqHistory(route, symbol, resolvedRequest) }
       ];
 
   const errors: string[] = [];
@@ -357,7 +364,7 @@ export async function fetchRealHistory(symbol: string, request: HistoryRequest =
 
     if (result.data?.candles.length) {
       logFinal(route, result.source, result.status, true);
-      return withHistoryMeta(withUpdatedAt(result), symbol, request, requestedAssetType, "equity", providerAttempts, result.source);
+      return withHistoryMeta(withUpdatedAt(result), symbol, resolvedRequest, requestedAssetType, "equity", providerAttempts, result.source);
     }
 
     if (result.error) errors.push(`${result.source}: ${result.error}`);
@@ -366,7 +373,7 @@ export async function fetchRealHistory(symbol: string, request: HistoryRequest =
   const missingConfig = providerAttempts.every((attempt) => attempt.error?.toLowerCase().includes("not configured"));
   const error = missingConfig ? "Market data provider not configured." : errors.find(Boolean) ?? "Chart data unavailable from configured providers.";
   logFinal(route, "Unavailable", "unavailable", false, error);
-  return withHistoryMeta(unavailable(error), symbol, request, requestedAssetType, "equity", providerAttempts, null);
+  return withHistoryMeta(unavailable(error), symbol, resolvedRequest, requestedAssetType, "equity", providerAttempts, null);
 }
 
 export async function fetchRealProfile(symbol: string): Promise<ProviderPayload<NormalizedProfile>> {
@@ -381,14 +388,23 @@ export async function fetchRealProfile(symbol: string): Promise<ProviderPayload<
 
 export async function fetchRealFundamentals(symbol: string): Promise<ProviderPayload<NormalizedFundamental[]>> {
   const route = `api/fundamentals/${symbol}`;
-  const result = await fetchFmpFundamentals(route, symbol).catch((error): AttemptResult<NormalizedFundamental[]> => failed("Financial Modeling Prep", safeError(error)));
-  return result.data?.length ? withUpdatedAt(result) : unavailable(result.error ?? "Fundamentals unavailable from provider.");
+  const providers: Array<() => Promise<AttemptResult<NormalizedFundamental[]>>> = [
+    () => fetchFmpFundamentals(route, symbol),
+    () => fetchAlphaVantageFundamentals(route, symbol),
+    () => fetchFinnhubFundamentals(route, symbol),
+    () => fetchYahooFundamentals(route, symbol)
+  ];
+  return firstUsable(route, providers, (rows) => Array.isArray(rows) && rows.some((row) => row.value !== "Unavailable"));
 }
 
 export async function fetchRealEarnings(symbol: string): Promise<ProviderPayload<NormalizedEarnings[]>> {
   const route = `api/earnings/${symbol}`;
-  const result = await fetchFmpEarnings(route, symbol).catch((error): AttemptResult<NormalizedEarnings[]> => failed("Financial Modeling Prep", safeError(error)));
-  return result.data?.length ? withUpdatedAt(result) : unavailable(result.error ?? "Earnings unavailable from provider.");
+  const providers: Array<() => Promise<AttemptResult<NormalizedEarnings[]>>> = [
+    () => fetchFmpEarnings(route, symbol),
+    () => fetchAlphaVantageEarnings(route, symbol),
+    () => fetchFinnhubEarnings(route, symbol)
+  ];
+  return firstUsable(route, providers, (rows) => Array.isArray(rows) && rows.length > 0);
 }
 
 export async function fetchRealTechnicals(symbol: string): Promise<ProviderPayload<NormalizedTechnical[]>> {
@@ -752,6 +768,87 @@ async function fetchAlphaVantageQuote(route: string, symbol: string): Promise<At
   return quote ? delayed("Alpha Vantage", quote) : failed("Alpha Vantage", "Alpha Vantage quote response had no usable price.");
 }
 
+async function fetchTwelveDataQuote(route: string, symbol: string): Promise<AttemptResult<NormalizedQuote>> {
+  if (!serverEnv.twelveDataApiKey) return providerMissing(route, "Twelve Data", symbol);
+  const json = await providerJson(route, "Twelve Data quote", symbol, `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.twelveDataApiKey}`);
+  const row = asRecord(json.data);
+  const price = numberFrom(row.close ?? row.price);
+  if (!price) return failed("Twelve Data", "Twelve Data quote response had no usable price.");
+  const quote: NormalizedQuote = {
+    symbol: stringFrom(row.symbol, symbol),
+    name: stringFrom(row.name, symbol),
+    price,
+    change: numberFrom(row.change) ?? 0,
+    changePercent: numberFrom(row.percent_change) ?? 0,
+    previousClose: numberFrom(row.previous_close),
+    open: numberFrom(row.open),
+    dayHigh: numberFrom(row.high),
+    dayLow: numberFrom(row.low),
+    volume: numberFrom(row.volume),
+    marketCap: numberFrom(row.market_cap)
+  };
+  logProvider(route, "Twelve Data", symbol, json.httpStatus, json.keys, true);
+  return delayed("Twelve Data", quote);
+}
+
+async function fetchYahooQuote(route: string, symbol: string): Promise<AttemptResult<NormalizedQuote>> {
+  if (!serverEnv.yahooFinanceEnabled) return providerMissing(route, "Yahoo Finance", symbol);
+  try {
+    const yahooFinance = await loadYahooFinance();
+    const row = asRecord(await yahooFinance.quote(symbol));
+    const price = numberFrom(row.regularMarketPrice);
+    if (!price) return failed("Yahoo Finance", "Yahoo quote response had no usable price.");
+    const quote: NormalizedQuote = {
+      symbol,
+      name: stringFrom(row.longName ?? row.shortName, symbol),
+      price,
+      change: numberFrom(row.regularMarketChange) ?? 0,
+      changePercent: numberFrom(row.regularMarketChangePercent) ?? 0,
+      previousClose: numberFrom(row.regularMarketPreviousClose),
+      open: numberFrom(row.regularMarketOpen),
+      dayHigh: numberFrom(row.regularMarketDayHigh),
+      dayLow: numberFrom(row.regularMarketDayLow),
+      volume: numberFrom(row.regularMarketVolume),
+      marketCap: numberFrom(row.marketCap)
+    };
+    logProvider(route, "Yahoo Finance", symbol, 200, ["quote"], true);
+    return { ...delayed("Yahoo Finance (delayed/unofficial)", quote), delay: "Delayed / unofficial" };
+  } catch (error) {
+    return failed("Yahoo Finance", safeError(error));
+  }
+}
+
+async function fetchStooqQuote(route: string, symbol: string): Promise<AttemptResult<NormalizedQuote>> {
+  if (!serverEnv.stooqEnabled) return providerMissing(route, "Stooq", symbol);
+  try {
+    const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&f=sd2t2ohlcv&h&e=csv`;
+    const response = await fetch(url, { next: { revalidate: 60 } });
+    const csv = await response.text();
+    const lines = csv.trim().split(/\r?\n/);
+    if (lines.length < 2) return failed("Stooq", "Stooq quote response had no usable rows.");
+    const values = lines[1].split(",");
+    const price = numberFrom(values[6]);
+    if (!price) return failed("Stooq", "Stooq quote response had no usable price.");
+    const quote: NormalizedQuote = {
+      symbol,
+      name: symbol,
+      price,
+      change: 0,
+      changePercent: 0,
+      previousClose: null,
+      open: numberFrom(values[3]),
+      dayHigh: numberFrom(values[4]),
+      dayLow: numberFrom(values[5]),
+      volume: numberFrom(values[7]),
+      marketCap: null
+    };
+    logProvider(route, "Stooq", symbol, response.status, ["csv"], true);
+    return { ...delayed("Stooq (delayed/unofficial)", quote), delay: "Delayed / unofficial" };
+  } catch (error) {
+    return failed("Stooq", safeError(error));
+  }
+}
+
 async function fetchAlpacaQuote(route: string, symbol: string): Promise<AttemptResult<NormalizedQuote>> {
   if (!serverEnv.alpacaApiKey || !serverEnv.alpacaSecretKey) return providerMissing(route, "Alpaca", symbol);
   const json = await providerJson(route, "Alpaca", symbol, `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol)}/quotes/latest`, {
@@ -916,6 +1013,50 @@ async function fetchAlpacaHistory(route: string, symbol: string, request: Histor
   return candles.length ? delayed("Alpaca", { symbol, candles }) : failed("Alpaca", "Alpaca history response had no usable candles.");
 }
 
+async function fetchYahooHistory(route: string, symbol: string, request: HistoryRequest): Promise<AttemptResult<NormalizedHistory>> {
+  if (!serverEnv.yahooFinanceEnabled) return providerMissing(route, "Yahoo Finance", symbol);
+  try {
+    const yahooFinance = await loadYahooFinance();
+    const interval = normalizeInterval(request.interval);
+    const { period1, period2 } = yahooRangeToPeriod(request.range);
+    const yahooInterval = yahooIntervalFromNormalized(interval);
+    const chart = asRecord(await yahooFinance.chart(symbol, { period1, period2, interval: yahooInterval }));
+    const rows = Array.isArray(chart.quotes) ? chart.quotes.map(asRecord) : [];
+    const candles = filterHistoryCandles(rows.map((row) => makeCandle(
+      row.date instanceof Date ? row.date.toISOString() : stringFrom(row.date, ""),
+      row.open,
+      row.high,
+      row.low,
+      row.close,
+      row.volume
+    )).filter(isCandle), request);
+    if (!candles.length) return failed("Yahoo Finance", "Yahoo history response had no usable candles.");
+    logProvider(route, "Yahoo Finance", symbol, 200, ["chart"], true, `usableCandles=${candles.length}`);
+    return { ...delayed("Yahoo Finance (delayed/unofficial)", { symbol, candles }), delay: "Delayed / unofficial" };
+  } catch (error) {
+    return failed("Yahoo Finance", safeError(error));
+  }
+}
+
+async function fetchStooqHistory(route: string, symbol: string, request: HistoryRequest): Promise<AttemptResult<NormalizedHistory>> {
+  if (!serverEnv.stooqEnabled) return providerMissing(route, "Stooq", symbol);
+  try {
+    const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}.us&i=d`;
+    const response = await fetch(url, { next: { revalidate: 1800 } });
+    const csv = await response.text();
+    const lines = csv.trim().split(/\r?\n/).slice(1);
+    const candles = filterHistoryCandles(lines.map((line) => {
+      const values = line.split(",");
+      return makeCandle(values[0], values[1], values[2], values[3], values[4], values[5]);
+    }).filter(isCandle), request);
+    if (!candles.length) return failed("Stooq", "Stooq history response had no usable candles.");
+    logProvider(route, "Stooq", symbol, response.status, ["csv"], true, `usableCandles=${candles.length}`);
+    return { ...delayed("Stooq (delayed/unofficial)", { symbol, candles }), delay: "Delayed / unofficial" };
+  } catch (error) {
+    return failed("Stooq", safeError(error));
+  }
+}
+
 async function fetchFmpProfile(route: string, symbol: string): Promise<AttemptResult<NormalizedProfile>> {
   if (!serverEnv.fmpApiKey) return providerMissing(route, "FMP", symbol);
   const json = await providerJson(route, "FMP profile", symbol, `https://financialmodelingprep.com/stable/profile?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.fmpApiKey}`);
@@ -985,6 +1126,111 @@ async function fetchFmpEarnings(route: string, symbol: string): Promise<AttemptR
   });
   logProvider(route, "FMP", symbol, json.httpStatus, json.keys, earnings.length > 0, `usableEarnings=${earnings.length}`);
   return earnings.length ? delayed("Financial Modeling Prep", earnings) : failed("Financial Modeling Prep", "FMP earnings response had no usable rows.");
+}
+
+async function fetchAlphaVantageFundamentals(route: string, symbol: string): Promise<AttemptResult<NormalizedFundamental[]>> {
+  if (!serverEnv.alphaVantageApiKey) return providerMissing(route, "Alpha Vantage", symbol);
+  const json = await providerJson(route, "Alpha Vantage Overview", symbol, `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.alphaVantageApiKey}`);
+  const row = asRecord(json.data);
+  const fields: NormalizedFundamental[] = [
+    fundamental("Sector", stringFrom(row.Sector, "Unavailable"), "Alpha Vantage overview"),
+    fundamental("Market Cap", currencyFrom(row.MarketCapitalization), "Alpha Vantage overview"),
+    fundamental("P/E", valueFrom(row.PERatio), "Alpha Vantage overview"),
+    fundamental("Forward P/E", valueFrom(row.ForwardPE), "Alpha Vantage overview"),
+    fundamental("Revenue Growth", percentDisplay(row.QuarterlyRevenueGrowthYOY), "Alpha Vantage overview"),
+    fundamental("EPS Growth", percentDisplay(row.QuarterlyEarningsGrowthYOY), "Alpha Vantage overview"),
+    fundamental("Gross Margin", percentDisplay(row.GrossProfitTTM && row.RevenueTTM ? numberFrom(row.GrossProfitTTM)! / numberFrom(row.RevenueTTM)! : null), "Alpha Vantage overview"),
+    fundamental("Debt/Equity", valueFrom(row.DebtToEquity), "Alpha Vantage overview")
+  ];
+  const usable = fields.some((row) => row.value !== "Unavailable");
+  return usable ? delayed("Alpha Vantage", fields) : failed("Alpha Vantage", "Alpha Vantage overview had no usable fields.");
+}
+
+async function fetchFinnhubFundamentals(route: string, symbol: string): Promise<AttemptResult<NormalizedFundamental[]>> {
+  if (!serverEnv.finnhubApiKey) return providerMissing(route, "Finnhub", symbol);
+  const [profile, metrics] = await Promise.all([
+    providerJson(route, "Finnhub profile", symbol, `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${serverEnv.finnhubApiKey}`),
+    providerJson(route, "Finnhub metrics", symbol, `https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${serverEnv.finnhubApiKey}`)
+  ]);
+  const profileRow = asRecord(profile.data);
+  const metricRow = asRecord(asRecord(metrics.data).metric);
+  const fields: NormalizedFundamental[] = [
+    fundamental("Sector", stringFrom(profileRow.finnhubIndustry, "Unavailable"), "Finnhub profile"),
+    fundamental("Market Cap", currencyFrom(profileRow.marketCapitalization), "Finnhub profile"),
+    fundamental("P/E", valueFrom(metricRow.peBasicExclExtraTTM), "Finnhub metric"),
+    fundamental("Forward P/E", valueFrom(metricRow.peForwardAnnual), "Finnhub metric"),
+    fundamental("Revenue Growth", percentDisplay(metricRow.revenueGrowthTTMYoy), "Finnhub metric"),
+    fundamental("EPS Growth", percentDisplay(metricRow.epsGrowthTTMYoy), "Finnhub metric"),
+    fundamental("Gross Margin", percentDisplay(metricRow.grossMarginTTM), "Finnhub metric"),
+    fundamental("Debt/Equity", valueFrom(metricRow.totalDebt2EquityAnnual), "Finnhub metric")
+  ];
+  const usable = fields.some((row) => row.value !== "Unavailable");
+  return usable ? delayed("Finnhub", fields) : failed("Finnhub", "Finnhub metrics had no usable fields.");
+}
+
+async function fetchYahooFundamentals(route: string, symbol: string): Promise<AttemptResult<NormalizedFundamental[]>> {
+  if (!serverEnv.yahooFinanceEnabled) return providerMissing(route, "Yahoo Finance", symbol);
+  try {
+    const yahooFinance = await loadYahooFinance();
+    const summary = asRecord(await yahooFinance.quoteSummary(symbol, { modules: ["summaryProfile", "defaultKeyStatistics", "financialData", "price"] }));
+    const financialData = asRecord(summary.financialData ?? {});
+    const defaultKeyStatistics = asRecord(summary.defaultKeyStatistics ?? {});
+    const profile = asRecord(summary.summaryProfile ?? {});
+    const price = asRecord(summary.price ?? {});
+    const fields: NormalizedFundamental[] = [
+      fundamental("Sector", stringFrom(profile.sector, "Unavailable"), "Yahoo summary profile"),
+      fundamental("Market Cap", currencyFrom(asRecord(price.marketCap).raw ?? price.marketCap), "Yahoo price module"),
+      fundamental("P/E", valueFrom(asRecord(defaultKeyStatistics.trailingPE).raw ?? defaultKeyStatistics.trailingPE), "Yahoo key stats"),
+      fundamental("Forward P/E", valueFrom(asRecord(defaultKeyStatistics.forwardPE).raw ?? defaultKeyStatistics.forwardPE), "Yahoo key stats"),
+      fundamental("Revenue Growth", percentDisplay(asRecord(financialData.revenueGrowth).raw ?? financialData.revenueGrowth), "Yahoo financial data"),
+      fundamental("Gross Margin", percentDisplay(asRecord(financialData.grossMargins).raw ?? financialData.grossMargins), "Yahoo financial data"),
+      fundamental("Debt/Equity", valueFrom(asRecord(financialData.debtToEquity).raw ?? financialData.debtToEquity), "Yahoo financial data")
+    ];
+    const usable = fields.some((row) => row.value !== "Unavailable");
+    return usable ? delayed("Yahoo Finance (delayed/unofficial)", fields) : failed("Yahoo Finance", "Yahoo fundamentals had no usable fields.");
+  } catch (error) {
+    return failed("Yahoo Finance", safeError(error));
+  }
+}
+
+async function fetchAlphaVantageEarnings(route: string, symbol: string): Promise<AttemptResult<NormalizedEarnings[]>> {
+  if (!serverEnv.alphaVantageApiKey) return providerMissing(route, "Alpha Vantage", symbol);
+  const json = await providerJson(route, "Alpha Vantage earnings", symbol, `https://www.alphavantage.co/query?function=EARNINGS&symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.alphaVantageApiKey}`);
+  const rows = Array.isArray(json.data?.quarterlyEarnings) ? json.data.quarterlyEarnings : [];
+  const earnings = rows.slice(0, 8).map((row: unknown) => {
+    const record = asRecord(row);
+    const epsActual = numberFrom(record.reportedEPS);
+    const epsEstimate = numberFrom(record.estimatedEPS);
+    const surprise = epsActual !== null && epsEstimate !== null ? epsActual - epsEstimate : null;
+    return {
+      quarter: stringFrom(record.fiscalDateEnding, "Unavailable"),
+      revenue: "Unavailable",
+      eps: valueFrom(record.reportedEPS),
+      surprise: surprise === null ? "Unavailable" : `${surprise >= 0 ? "+" : ""}${surprise.toFixed(2)}`,
+      guide: epsEstimate === null ? "Unavailable" : `EPS est. ${epsEstimate.toFixed(2)}`
+    };
+  });
+  return earnings.length ? delayed("Alpha Vantage", earnings) : failed("Alpha Vantage", "Alpha Vantage earnings had no usable rows.");
+}
+
+async function fetchFinnhubEarnings(route: string, symbol: string): Promise<AttemptResult<NormalizedEarnings[]>> {
+  if (!serverEnv.finnhubApiKey) return providerMissing(route, "Finnhub", symbol);
+  const json = await providerJson(route, "Finnhub earnings", symbol, `https://finnhub.io/api/v1/stock/earnings?symbol=${encodeURIComponent(symbol)}&token=${serverEnv.finnhubApiKey}`);
+  const rows = Array.isArray(json.data) ? json.data : [];
+  const earnings = rows.slice(0, 8).map((row: unknown) => {
+    const record = asRecord(row);
+    const actual = numberFrom(record.actual);
+    const estimate = numberFrom(record.estimate);
+    const surprise = actual !== null && estimate !== null ? actual - estimate : null;
+    return {
+      quarter: `${stringFrom(record.period, "Unavailable")}`,
+      revenue: numberFrom(record.revenueActual) !== null ? currencyFrom(record.revenueActual) : "Unavailable",
+      eps: actual === null ? "Unavailable" : actual.toFixed(2),
+      surprise: surprise === null ? "Unavailable" : `${surprise >= 0 ? "+" : ""}${surprise.toFixed(2)}`,
+      guide: estimate === null ? "Unavailable" : `EPS est. ${estimate.toFixed(2)}`
+    };
+  });
+  return earnings.length ? delayed("Finnhub", earnings) : failed("Finnhub", "Finnhub earnings had no usable rows.");
 }
 
 async function fetchFinnhubProfile(route: string, symbol: string): Promise<AttemptResult<NormalizedProfile>> {
@@ -1593,7 +1839,7 @@ function normalizeCandleTime(value: string) {
 
 function filterHistoryCandles(candles: NormalizedCandle[], request: HistoryRequest) {
   if (!candles.length) return candles;
-  const interval = normalizeInterval(request.interval);
+  const interval = normalizeInterval(resolveHistoryIntervalForRange(request.range, request.interval));
 
   if (interval !== "1day") {
     const cutoff = Date.now() - historyDays(request.range) * 24 * 60 * 60 * 1000;
@@ -1608,6 +1854,19 @@ function filterHistoryCandles(candles: NormalizedCandle[], request: HistoryReque
   }
 
   return candles.slice(-historyLimit(request.range));
+}
+
+function resolveHistoryIntervalForRange(range?: string, requestedInterval?: string) {
+  const value = (range ?? "1Y").toLowerCase();
+  if (value === "1d") return requestedInterval ?? "5m";
+  if (value === "5d") return requestedInterval ?? "30m";
+  if (value === "1m" || value === "1mo") return "1d";
+  if (value === "3m" || value === "3mo") return "1d";
+  if (value === "6m" || value === "6mo") return "1d";
+  if (value === "ytd") return "1d";
+  if (value === "1y") return "1d";
+  if (value === "5y") return requestedInterval ?? "1wk";
+  return requestedInterval ?? "1d";
 }
 
 function isCandle(candle: NormalizedCandle | null): candle is NormalizedCandle {
@@ -2691,6 +2950,14 @@ function valueFrom(value: unknown) {
   return number === null ? "Unavailable" : number.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+function percentDisplay(value: unknown) {
+  const number = numberFrom(value);
+  if (number === null) return "Unavailable";
+  const normalized = Math.abs(number) > 1 ? number : number * 100;
+  const sign = normalized > 0 ? "+" : "";
+  return `${sign}${normalized.toFixed(2)}%`;
+}
+
 function currencyFrom(value: unknown) {
   const number = numberFrom(value);
   if (number === null) return "Unavailable";
@@ -2810,6 +3077,7 @@ function average(values: number[]) {
 
 function normalizeInterval(interval?: string) {
   const value = (interval ?? "1d").toLowerCase();
+  if (["1wk", "1w", "week", "weekly"].includes(value)) return "1week";
   if (["1m", "1min"].includes(value)) return "1min";
   if (["5m", "5min"].includes(value)) return "5min";
   if (["15m", "15min"].includes(value)) return "15min";
@@ -2817,6 +3085,11 @@ function normalizeInterval(interval?: string) {
   if (["1h", "60m", "60min"].includes(value)) return "1hour";
   if (["4h", "240m", "240min"].includes(value)) return "4hour";
   return "1day";
+}
+
+async function loadYahooFinance() {
+  const mod = await import("yahoo-finance2");
+  return mod.default;
 }
 
 function historyDays(range?: string) {
@@ -2855,7 +3128,8 @@ function fmpIntradayInterval(interval: string) {
     "15min": "15min",
     "30min": "30min",
     "1hour": "1hour",
-    "4hour": "4hour"
+    "4hour": "4hour",
+    "1week": "1week"
   };
   return map[interval];
 }
@@ -2879,7 +3153,8 @@ function twelveDataInterval(interval: string) {
     "30min": "30min",
     "1hour": "1h",
     "4hour": "4h",
-    "1day": "1day"
+    "1day": "1day",
+    "1week": "1week"
   };
   return map[interval] ?? "1day";
 }
@@ -2892,7 +3167,29 @@ function alpacaTimeframe(interval: string) {
     "30min": "30Min",
     "1hour": "1Hour",
     "4hour": "4Hour",
-    "1day": "1Day"
+    "1day": "1Day",
+    "1week": "1Week"
   };
   return map[interval] ?? "1Day";
+}
+
+function yahooIntervalFromNormalized(interval: string) {
+  const map: Record<string, "1m" | "5m" | "15m" | "30m" | "60m" | "1d" | "1wk"> = {
+    "1min": "1m",
+    "5min": "5m",
+    "15min": "15m",
+    "30min": "30m",
+    "1hour": "60m",
+    "4hour": "60m",
+    "1day": "1d",
+    "1week": "1wk"
+  };
+  return map[interval] ?? "1d";
+}
+
+function yahooRangeToPeriod(range?: string) {
+  const now = new Date();
+  const end = now;
+  const start = new Date(now.getTime() - historyDays(range) * 24 * 60 * 60 * 1000);
+  return { period1: start, period2: end };
 }

@@ -256,12 +256,12 @@ export function InteractivePriceChart({
   const hasData = chartData.length > 0;
 
   return (
-    <div className="min-w-0 rounded-xl border border-white/[0.10] bg-white/[0.03] shadow-[0_10px_28px_rgba(0,0,0,0.12)]">
-      <div className="flex flex-col gap-3 border-b border-white/[0.08] p-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="min-w-0 rounded-2xl border border-terminal-line bg-terminal-panel shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+      <div className="flex flex-col gap-3 border-b border-terminal-line p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-terminal-text">{title}</h3>
-            <span className="rounded-full border border-terminal-cyan/25 bg-terminal-cyan/[0.10] px-2.5 py-0.5 text-[11px] text-terminal-cyan">
+            <span className="rounded-full border border-terminal-cyan/20 bg-terminal-cyan/[0.08] px-2.5 py-0.5 text-[11px] text-terminal-cyan">
               {symbol.toUpperCase()}
             </span>
             {latestPrice ? <span className="font-mono text-xs text-terminal-cyan">{formatPrice(latestPrice)}</span> : null}
@@ -270,7 +270,7 @@ export function InteractivePriceChart({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-white/10 bg-white/[0.02] p-1">
+          <div className="flex rounded-lg border border-terminal-line bg-terminal-panel2 p-1">
             {(["candles", "line"] as ChartView[]).map((mode) => (
               <button
                 key={mode}
@@ -278,14 +278,14 @@ export function InteractivePriceChart({
                 onClick={() => setView(mode)}
                 className={cn(
                   "rounded-md px-2.5 py-1 text-[11px] uppercase tracking-normal transition",
-                  view === mode ? "bg-terminal-cyan/[0.22] text-terminal-text" : "text-terminal-muted hover:text-terminal-text"
+                  view === mode ? "border border-terminal-cyan/25 bg-terminal-cyan/[0.10] text-terminal-cyan" : "text-terminal-muted hover:bg-terminal-panel hover:text-terminal-text"
                 )}
               >
                 {mode === "candles" ? "Candles" : "Line"}
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap rounded-lg border border-white/10 bg-white/[0.02] p-1">
+          <div className="flex flex-wrap rounded-lg border border-terminal-line bg-terminal-panel2 p-1">
             {chartTimeframes.map((item) => (
               <button
                 key={item}
@@ -293,7 +293,7 @@ export function InteractivePriceChart({
                 onClick={() => setTimeframe(item)}
                 className={cn(
                   "rounded-md px-2 py-1 font-mono text-[11px] transition",
-                  timeframe === item ? "bg-white/[0.14] text-terminal-text" : "text-terminal-muted hover:text-terminal-text"
+                  timeframe === item ? "border border-terminal-cyan/25 bg-terminal-cyan/[0.10] text-terminal-cyan" : "text-terminal-muted hover:bg-terminal-panel hover:text-terminal-text"
                 )}
               >
                 {item}
@@ -303,17 +303,17 @@ export function InteractivePriceChart({
         </div>
       </div>
 
-      <div className="relative min-h-[360px] min-w-0 p-2">
+      <div className="relative min-h-[360px] min-w-0 p-4">
         {loading || remoteLoading ? <ChartState label="Loading chart data..." /> : null}
         {!loading && !remoteLoading && (error || remoteError) ? <ChartState label={error ?? remoteError ?? emptyMessage} tone="error" /> : null}
         {!loading && !remoteLoading && !error && !remoteError && !hasData ? <ChartState label={emptyMessage} /> : null}
         {!loading && !remoteLoading && !error && !remoteError && hasData ? <div ref={containerRef} className="h-[360px] min-w-0" /> : null}
         {tooltip ? (
           <div
-            className="pointer-events-none absolute z-10 w-[208px] rounded-xl border border-white/10 bg-[#111b2d]/95 p-3 shadow-2xl backdrop-blur"
+            className="pointer-events-none absolute z-10 w-[208px] rounded-xl border border-terminal-line bg-terminal-panel p-3 shadow-lg"
             style={{ left: tooltip.x, top: tooltip.y }}
           >
-            <div className="mb-2 border-b border-white/10 pb-2 font-mono text-[11px] text-terminal-cyan">{tooltip.time}</div>
+            <div className="mb-2 border-b border-terminal-line pb-2 font-mono text-[11px] text-terminal-cyan">{tooltip.time}</div>
             <TooltipRow label="Open" value={formatPrice(tooltip.open)} />
             <TooltipRow label="High" value={formatPrice(tooltip.high)} />
             <TooltipRow label="Low" value={formatPrice(tooltip.low)} />
@@ -328,20 +328,14 @@ export function InteractivePriceChart({
 
 function chartRequestForTimeframe(timeframe: ChartTimeframe) {
   const map: Record<ChartTimeframe, { range: string; interval: string }> = {
-    "1m": { range: "1D", interval: "1m" },
-    "5m": { range: "5D", interval: "5m" },
-    "15m": { range: "5D", interval: "15m" },
-    "30m": { range: "1M", interval: "30m" },
-    "1h": { range: "1M", interval: "1h" },
-    "4h": { range: "3M", interval: "4h" },
     "1D": { range: "1D", interval: "5m" },
-    "5D": { range: "5D", interval: "15m" },
-    "1Mo": { range: "1M", interval: "1d" },
-    "3Mo": { range: "3M", interval: "1d" },
-    "6Mo": { range: "6M", interval: "1d" },
+    "5D": { range: "5D", interval: "30m" },
+    "1Mo": { range: "1Mo", interval: "1d" },
+    "3Mo": { range: "3Mo", interval: "1d" },
+    "6Mo": { range: "6Mo", interval: "1d" },
     YTD: { range: "YTD", interval: "1d" },
     "1Y": { range: "1Y", interval: "1d" },
-    "5Y": { range: "5Y", interval: "1d" }
+    "5Y": { range: "5Y", interval: "1wk" }
   };
   return map[timeframe];
 }
@@ -376,7 +370,7 @@ function ChartState({ label, tone = "muted" }: { label: string; tone?: "muted" |
     <div
       className={cn(
         "flex min-h-[360px] items-center justify-center rounded border border-dashed px-4 text-center text-sm",
-        tone === "error" ? "border-terminal-red/30 text-terminal-red" : "border-white/10 text-terminal-muted"
+        tone === "error" ? "border-terminal-red/30 text-terminal-red" : "border-terminal-line text-terminal-muted"
       )}
     >
       {label}
