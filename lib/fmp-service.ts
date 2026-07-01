@@ -1,6 +1,6 @@
 import type { ApiResponseStatus } from "@/lib/api-response";
 
-const FMP_BASE_URL = "https://financialmodelingprep.com/api";
+const FMP_BASE_URL = "https://financialmodelingprep.com/stable";
 const CACHE_SECONDS = 300;
 
 export type ApiPayload<T> = {
@@ -74,27 +74,27 @@ export const apiCacheHeaders = {
 };
 
 export async function getQuote(symbol: string): Promise<ApiPayload<FmpQuote | null>> {
-  return withSingleFallback(symbol, () => fetchFmpArray<FmpQuote>(`/v3/quote/${symbol}`));
+  return withSingleFallback(symbol, () => fetchFmpArray<FmpQuote>(`/quote?symbol=${encodeURIComponent(symbol)}`));
 }
 
 export async function getProfile(symbol: string): Promise<ApiPayload<FmpProfile | null>> {
-  return withSingleFallback(symbol, () => fetchFmpArray<FmpProfile>(`/v3/profile/${symbol}`));
+  return withSingleFallback(symbol, () => fetchFmpArray<FmpProfile>(`/profile?symbol=${encodeURIComponent(symbol)}`));
 }
 
 export async function getTickerNews(symbol: string): Promise<ApiPayload<FmpNews[]>> {
-  return withListFallback(symbol, () => fetchFmpArray<FmpNews>(`/v3/stock_news?tickers=${encodeURIComponent(symbol)}&limit=10`));
+  return withListFallback(symbol, () => fetchFmpArray<FmpNews>(`/news/stock?symbols=${encodeURIComponent(symbol)}&page=0&limit=10`));
 }
 
 export async function getMarketNews(): Promise<ApiPayload<FmpMarketNews[]>> {
-  return withListFallback("MARKET", () => fetchFmpArray<FmpMarketNews>("/v3/stock_news?limit=20"));
+  return withListFallback("MARKET", () => fetchFmpArray<FmpMarketNews>("/news/stock-latest?page=0&limit=20"));
 }
 
 export async function getEarnings(symbol: string): Promise<ApiPayload<FmpEarnings[]>> {
-  return withListFallback(symbol, () => fetchFmpArray<FmpEarnings>(`/v3/historical/earning_calendar/${symbol}?limit=8`));
+  return withListFallback(symbol, () => fetchFmpArray<FmpEarnings>(`/earnings?symbol=${encodeURIComponent(symbol)}&limit=8`));
 }
 
 export async function getFundamentals(symbol: string): Promise<ApiPayload<FmpFundamental[]>> {
-  return withListFallback(symbol, () => fetchFmpArray<FmpFundamental>(`/v3/key-metrics-ttm/${symbol}`));
+  return withListFallback(symbol, () => fetchFmpArray<FmpFundamental>(`/key-metrics-ttm?symbol=${encodeURIComponent(symbol)}`));
 }
 
 async function withSingleFallback<T>(symbol: string, fetcher: () => Promise<T[]>): Promise<ApiPayload<T | null>> {
@@ -168,19 +168,34 @@ async function fetchFmpArray<T>(path: string): Promise<T[]> {
   }
 
   const separator = path.includes("?") ? "&" : "?";
-  const response = await fetch(`${FMP_BASE_URL}${path}${separator}apikey=${apiKey}`, {
+  const url = `${FMP_BASE_URL}${path}${separator}apikey=${apiKey}`;
+  const response = await fetch(url, {
     next: { revalidate: CACHE_SECONDS }
   });
+  const responseBody = await response.text();
 
   if (!response.ok) {
+    console.error(`[fmp-service] status=${response.status} url=${url} body=${truncateResponseBody(responseBody)}`);
     throw new Error(`FMP request failed with status ${response.status}.`);
   }
 
-  const data = await response.json();
+  let data: unknown;
+  try {
+    data = JSON.parse(responseBody);
+  } catch {
+    console.error(`[fmp-service] status=${response.status} url=${url} body=${truncateResponseBody(responseBody)} reason=invalid_json`);
+    throw new Error("FMP returned an unexpected response format.");
+  }
 
   if (!Array.isArray(data)) {
+    console.error(`[fmp-service] status=${response.status} url=${url} body=${truncateResponseBody(responseBody)} reason=unexpected_shape`);
     throw new Error("FMP returned an unexpected response shape.");
   }
 
   return data as T[];
+}
+
+function truncateResponseBody(body: string, maxLength = 1200) {
+  const normalized = body.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized || "<empty>";
 }

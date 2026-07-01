@@ -12,7 +12,7 @@ type ProviderDebug = {
 
 export async function GET() {
   const [fmp, finnhub, fred, marketaux, alphaVantage, twelveData] = await Promise.all([
-    testJson("fmp", Boolean(serverEnv.fmpApiKey), `https://financialmodelingprep.com/api/v3/quote/NVDA?apikey=${serverEnv.fmpApiKey}`, (data) => Array.isArray(data) && data.length > 0),
+    testJson("fmp", Boolean(serverEnv.fmpApiKey), `https://financialmodelingprep.com/stable/quote?symbol=NVDA&apikey=${serverEnv.fmpApiKey}`, (data) => Array.isArray(data) && data.length > 0),
     testJson("finnhub", Boolean(serverEnv.finnhubApiKey), `https://finnhub.io/api/v1/quote?symbol=NVDA&token=${serverEnv.finnhubApiKey}`, (data) => Boolean(asRecord(data).c)),
     testJson("fred", Boolean(serverEnv.fredApiKey), `https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=${serverEnv.fredApiKey}&file_type=json&sort_order=desc&limit=5`, (data) => Array.isArray(asRecord(data).observations)),
     testJson("marketaux", Boolean(serverEnv.marketauxApiKey), `https://api.marketaux.com/v1/news/all?language=en&limit=3&api_token=${serverEnv.marketauxApiKey}`, (data) => Array.isArray(asRecord(data).data)),

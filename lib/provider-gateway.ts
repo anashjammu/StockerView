@@ -639,7 +639,7 @@ async function fetchMergedNews(
 
 async function fetchFmpQuote(route: string, symbol: string): Promise<AttemptResult<NormalizedQuote>> {
   if (!serverEnv.fmpApiKey) return providerMissing(route, "FMP", symbol);
-  const json = await providerJson(route, "FMP", symbol, `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(symbol)}?apikey=${serverEnv.fmpApiKey}`);
+  const json = await providerJson(route, "FMP", symbol, `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.fmpApiKey}`);
   const row = Array.isArray(json.data) ? json.data[0] : null;
   const quote = row ? normalizeFmpQuote(row, symbol) : null;
   logProvider(route, "FMP", symbol, json.httpStatus, json.keys, Boolean(quote));
@@ -679,8 +679,8 @@ async function fetchFmpHistory(route: string, symbol: string, request: HistoryRe
   const interval = normalizeInterval(request.interval);
   const fmpInterval = fmpIntradayInterval(interval);
   const url = fmpInterval
-    ? `https://financialmodelingprep.com/api/v3/historical-chart/${fmpInterval}/${encodeURIComponent(symbol)}?apikey=${serverEnv.fmpApiKey}`
-    : `https://financialmodelingprep.com/api/v3/historical-price-full/${encodeURIComponent(symbol)}?timeseries=${historyLimit(request.range)}&apikey=${serverEnv.fmpApiKey}`;
+    ? `https://financialmodelingprep.com/stable/historical-chart/${fmpInterval}?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.fmpApiKey}`
+    : `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=${historyLimit(request.range)}&apikey=${serverEnv.fmpApiKey}`;
   const json = await providerJson(route, "FMP", symbol, url);
   const rows = Array.isArray(json.data?.historical) ? json.data.historical : Array.isArray(json.data) ? json.data : [];
   const candles = rows.map(normalizeFmpCandle).filter(isCandle).reverse();
@@ -731,7 +731,7 @@ async function fetchAlpacaHistory(route: string, symbol: string, request: Histor
 
 async function fetchFmpProfile(route: string, symbol: string): Promise<AttemptResult<NormalizedProfile>> {
   if (!serverEnv.fmpApiKey) return providerMissing(route, "FMP", symbol);
-  const json = await providerJson(route, "FMP", symbol, `https://financialmodelingprep.com/api/v3/profile/${encodeURIComponent(symbol)}?apikey=${serverEnv.fmpApiKey}`);
+  const json = await providerJson(route, "FMP", symbol, `https://financialmodelingprep.com/stable/profile?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.fmpApiKey}`);
   const row = Array.isArray(json.data) ? json.data[0] : null;
   const profile = row ? normalizeFmpProfile(row, symbol) : null;
   logProvider(route, "FMP", symbol, json.httpStatus, json.keys, Boolean(profile));
@@ -741,12 +741,12 @@ async function fetchFmpProfile(route: string, symbol: string): Promise<AttemptRe
 async function fetchFmpFundamentals(route: string, symbol: string): Promise<AttemptResult<NormalizedFundamental[]>> {
   if (!serverEnv.fmpApiKey) return providerMissing(route, "FMP", symbol);
   const [metrics, ratios, income, balance, cashflow, profile] = await Promise.all([
-    providerJson(route, "FMP key metrics", symbol, `https://financialmodelingprep.com/api/v3/key-metrics-ttm/${encodeURIComponent(symbol)}?apikey=${serverEnv.fmpApiKey}`),
-    providerJson(route, "FMP ratios", symbol, `https://financialmodelingprep.com/api/v3/ratios-ttm/${encodeURIComponent(symbol)}?apikey=${serverEnv.fmpApiKey}`),
-    providerJson(route, "FMP income", symbol, `https://financialmodelingprep.com/api/v3/income-statement/${encodeURIComponent(symbol)}?limit=1&apikey=${serverEnv.fmpApiKey}`),
-    providerJson(route, "FMP balance", symbol, `https://financialmodelingprep.com/api/v3/balance-sheet-statement/${encodeURIComponent(symbol)}?limit=1&apikey=${serverEnv.fmpApiKey}`),
-    providerJson(route, "FMP cashflow", symbol, `https://financialmodelingprep.com/api/v3/cash-flow-statement/${encodeURIComponent(symbol)}?limit=1&apikey=${serverEnv.fmpApiKey}`),
-    providerJson(route, "FMP profile", symbol, `https://financialmodelingprep.com/api/v3/profile/${encodeURIComponent(symbol)}?apikey=${serverEnv.fmpApiKey}`)
+    providerJson(route, "FMP key metrics", symbol, `https://financialmodelingprep.com/stable/key-metrics-ttm?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.fmpApiKey}`),
+    providerJson(route, "FMP ratios", symbol, `https://financialmodelingprep.com/stable/ratios-ttm?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.fmpApiKey}`),
+    providerJson(route, "FMP income", symbol, `https://financialmodelingprep.com/stable/income-statement?symbol=${encodeURIComponent(symbol)}&limit=1&apikey=${serverEnv.fmpApiKey}`),
+    providerJson(route, "FMP balance", symbol, `https://financialmodelingprep.com/stable/balance-sheet-statement?symbol=${encodeURIComponent(symbol)}&limit=1&apikey=${serverEnv.fmpApiKey}`),
+    providerJson(route, "FMP cashflow", symbol, `https://financialmodelingprep.com/stable/cash-flow-statement?symbol=${encodeURIComponent(symbol)}&limit=1&apikey=${serverEnv.fmpApiKey}`),
+    providerJson(route, "FMP profile", symbol, `https://financialmodelingprep.com/stable/profile?symbol=${encodeURIComponent(symbol)}&apikey=${serverEnv.fmpApiKey}`)
   ]);
   const metric = Array.isArray(metrics.data) ? asRecord(metrics.data[0]) : {};
   const ratio = Array.isArray(ratios.data) ? asRecord(ratios.data[0]) : {};
@@ -777,7 +777,7 @@ async function fetchFmpFundamentals(route: string, symbol: string): Promise<Atte
 
 async function fetchFmpEarnings(route: string, symbol: string): Promise<AttemptResult<NormalizedEarnings[]>> {
   if (!serverEnv.fmpApiKey) return providerMissing(route, "FMP", symbol);
-  const json = await providerJson(route, "FMP earnings", symbol, `https://financialmodelingprep.com/api/v3/historical/earning_calendar/${encodeURIComponent(symbol)}?limit=8&apikey=${serverEnv.fmpApiKey}`);
+  const json = await providerJson(route, "FMP earnings", symbol, `https://financialmodelingprep.com/stable/earnings?symbol=${encodeURIComponent(symbol)}&limit=8&apikey=${serverEnv.fmpApiKey}`);
   const rows = Array.isArray(json.data) ? json.data : [];
   const earnings = rows.map((row) => {
     const record = asRecord(row);
@@ -954,21 +954,41 @@ async function fetchFredSeriesAttempt(route: string, seriesId: string): Promise<
 }
 
 async function providerJson(route: string, provider: string, query: string, url: string, headers?: HeadersInit) {
+  let response: Response | null = null;
+  let responseBody = "";
+
   try {
-    const response = await fetch(url, { headers, next: { revalidate: CACHE_SECONDS } });
-    const data = await response.json().catch(() => null);
+    response = await fetch(url, { headers, next: { revalidate: CACHE_SECONDS } });
+    responseBody = await response.text();
+    const data = safeJsonParse(responseBody);
     const keys = responseShapeKeys(data);
 
     if (!response.ok) {
-      console.info(`[${route}] provider=${provider} query=${query} status=${response.status} keys=[${keys.join(",")}] usable=false reason=http_error`);
+      console.error(`[${route}] provider=${provider} query=${query} status=${response.status} body=${truncateResponseBody(responseBody)} keys=[${keys.join(",")}] usable=false reason=http_error`);
       throw new Error(providerHttpError(response.status));
     }
 
-    return { data, httpStatus: response.status, keys };
+    return { data: data as any, httpStatus: response.status, keys };
   } catch (error) {
-    console.info(`[${route}] provider=${provider} query=${query} status=request_failed keys=[] usable=false reason=${safeError(error)}`);
+    const status = response?.status ?? "request_failed";
+    console.error(`[${route}] provider=${provider} query=${query} status=${status} body=${truncateResponseBody(responseBody)} reason=${safeError(error)}`);
     throw new Error(safeError(error));
   }
+}
+
+function safeJsonParse(body: string): any {
+  if (!body) return null;
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
+function truncateResponseBody(body: string, maxLength = 1200) {
+  const normalized = body.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized || "<empty>";
 }
 
 function normalizeFmpQuote(row: Record<string, unknown>, symbol: string): NormalizedQuote | null {
