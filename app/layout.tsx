@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "StockerView",
-  description: "StockerView market research terminal for live market data, news, futures, macro, and ticker analysis."
+  description: "Simple market research for stocks, ETFs, and market news."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

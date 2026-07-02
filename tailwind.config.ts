@@ -11,7 +11,7 @@ const config: Config = {
           panel2: "#F1F5F9",
           line: "#E2E8F0",
           amber: "#D97706",
-          cyan: "#0284C7",
+          cyan: "#2563EB",
           green: "#059669",
           red: "#DC2626",
           text: "#0F172A",

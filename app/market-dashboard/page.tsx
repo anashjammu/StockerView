@@ -2,16 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, HeatMap } from "@/components/Charts";
-import { AIInsight } from "@/components/AIInsight";
-import { DataQualityLabel } from "@/components/LocalTime";
 import { InteractivePriceChart } from "@/components/InteractivePriceChart";
+import { LiveMarketSearch } from "@/components/LiveMarketSearch";
 import { Panel } from "@/components/Panel";
 import { SortableDataTable, type SortableColumn } from "@/components/SortableDataTable";
 import { TerminalShell } from "@/components/TerminalShell";
 import { TickerLink } from "@/components/TickerLink";
 import { buildEmptyCandleSet, type ChartTimeframe, type OhlcvCandle } from "@/lib/chart-data";
 import { cn, formatChange } from "@/lib/utils";
-import { fetchMacroNews, fetchMarketNews, generateSourceGroundedAnalysis } from "@/lib/research-engine";
 import { heatMap, indexChartTitles, marketBreadth, type Ticker } from "@/lib/app-data";
 
 type MarketIndexTicker = Ticker & {
@@ -57,15 +55,6 @@ export default function MarketDashboard() {
   const [chartCandles, setChartCandles] = useState<Record<ChartTimeframe, OhlcvCandle[]>>(buildEmptyCandleSet());
   const selectedIndexData = quotes.find((index) => index.symbol === selectedIndex);
   const selectedProviderSymbol = selectedIndexData?.providerSymbol ?? "IXIC";
-  const analysis = generateSourceGroundedAnalysis({
-    id: "market-dashboard",
-    title: "Market Drivers",
-    topic: "Index direction, sector leadership, weak groups, macro drivers, and market-news context",
-    sources: [...fetchMarketNews(), ...fetchMacroNews()],
-    missingData: ["Real-time market breadth", "Full index constituent attribution", "Live volume by exchange"],
-    confidence: "Medium",
-    dataCompleteness: 80
-  });
 
   useEffect(() => {
     let active = true;
@@ -104,10 +93,17 @@ export default function MarketDashboard() {
   return (
     <TerminalShell
       active="/market-dashboard"
-      title="Market Dashboard"
-      subtitle="Global index pulse, market breadth, sector heat, and live-style equity monitor."
+      title="StockerView"
+      subtitle="Simple market research for stocks, ETFs, and market news."
     >
-      <div className="grid gap-3">
+      <div className="grid gap-5">
+        <LiveMarketSearch
+          prominent
+          assetTypes={["stock", "ETF"]}
+          placeholder="Search a stock or ETF..."
+          examples="Examples: NVDA, AMD, Apple, Microsoft, SPY, QQQ"
+        />
+
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {quotes.map((index) => (
             <IndexCard
@@ -117,9 +113,14 @@ export default function MarketDashboard() {
               onSelect={() => setSelectedIndex(index.symbol)}
             />
           ))}
+          {!quotes.length ? (
+            <div className="rounded-2xl border border-terminal-line bg-terminal-panel p-5 text-sm text-terminal-muted md:col-span-2 xl:col-span-4">
+              Market index data is unavailable from configured providers right now.
+            </div>
+          ) : null}
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[1.35fr_0.65fr]">
+        <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
           <InteractivePriceChart
             title={indexChartTitles[selectedIndex] ?? selectedIndexData?.name ?? selectedIndex}
             symbol={selectedProviderSymbol}
@@ -131,24 +132,29 @@ export default function MarketDashboard() {
           </Panel>
         </div>
 
-        <Panel title="Sector Heat Map">
-          <HeatMap items={heatMap} />
-        </Panel>
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <Panel title="Market Summary">
+            <div className="space-y-3 text-sm leading-6 text-terminal-muted">
+              <p>
+                Use the search bar to look up a stock or ETF, then review price action, key stats, setup signals, and related news.
+              </p>
+              <p>
+                Index cards give a quick read on broad market direction. Select an index to update the chart.
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="Sector Heat Map">
+            <HeatMap items={heatMap} />
+          </Panel>
+        </div>
 
         <Panel title="Equity Monitor">
           <SortableDataTable columns={columns} rows={quotes} defaultSortKey="price" />
         </Panel>
-
-        <AIInsight title="Why Markets Are Moving" analysis={analysis} />
-
-        <DataStatusRow />
       </div>
     </TerminalShell>
   );
-}
-
-function DataStatusRow() {
-  return <div className="px-1 text-xs text-terminal-muted"><DataQualityLabel /></div>;
 }
 
 function IndexCard({
@@ -165,8 +171,8 @@ function IndexCard({
   return (
     <div
       className={cn(
-        "min-w-0 rounded-md border border-white/[0.08] bg-white/[0.06] p-3 transition hover:border-white/15 hover:bg-white/[0.085]",
-        selected && "border-white/20 bg-terminal-cyan/[0.10]"
+        "min-w-0 rounded-2xl border border-terminal-line bg-terminal-panel p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition hover:border-terminal-cyan/25 hover:bg-terminal-panel2/50",
+        selected && "border-terminal-cyan/35 bg-terminal-cyan/[0.07]"
       )}
     >
       <div className="truncate text-xs text-terminal-muted">

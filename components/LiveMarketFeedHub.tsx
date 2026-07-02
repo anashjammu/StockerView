@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Fuse from "fuse.js";
 import { SimpleLocalTime } from "@/components/LocalTime";
-import { LiveMarketSearch } from "@/components/LiveMarketSearch";
 import { Panel } from "@/components/Panel";
 import { TickerLink } from "@/components/TickerLink";
 import type { EconomicCalendarItem, MarketBrief, NewsImpact, NewsItem, NewsSentiment } from "@/lib/news-service";
@@ -86,10 +85,6 @@ export function LiveMarketFeedHub({
 
   return (
     <div className="grid gap-4">
-      <Panel title="Search">
-        <LiveMarketSearch />
-      </Panel>
-
       <Panel title="Articles" action={<NewsStatusLine status={statusState} loading={loadingNews} />}>
         <div className="grid gap-4">
           <div className="flex flex-wrap items-center gap-3">

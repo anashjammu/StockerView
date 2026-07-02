@@ -4,13 +4,26 @@ import { FormEvent, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { useRouter } from "next/navigation";
-import { searchSymbols } from "@/lib/ticker-service";
+import { searchSymbols, type AssetType } from "@/lib/ticker-service";
+import { cn } from "@/lib/utils";
 
-export function LiveMarketSearch() {
+export function LiveMarketSearch({
+  placeholder = "Search any stock, ETF, index, or future...",
+  examples = "Examples: NVDA, MU, AMD, PLTR, QQQ, SPY, ES, NQ, CL, GC, ZN",
+  assetTypes,
+  className,
+  prominent = false
+}: {
+  placeholder?: string;
+  examples?: string;
+  assetTypes?: AssetType[];
+  className?: string;
+  prominent?: boolean;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const suggestions = useMemo(() => {
-    const base = searchSymbols(query);
+    const base = searchSymbols(query).filter((item) => !assetTypes?.length || assetTypes.includes(item.assetType));
     if (!query.trim()) return base.slice(0, 10);
 
     return matchSorter(base, query, {
@@ -35,15 +48,18 @@ export function LiveMarketSearch() {
   }
 
   return (
-    <section className="rounded-xl border border-terminal-line bg-terminal-panel p-4">
+    <section className={cn("rounded-2xl border border-terminal-line bg-terminal-panel p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]", prominent && "p-5 md:p-6", className)}>
       <form onSubmit={handleSubmit} className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-terminal-cyan" />
+        <Search className={cn("pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-terminal-cyan", prominent ? "h-5 w-5" : "h-4 w-4")} />
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value.toUpperCase())}
-          placeholder="Search any stock, ETF, index, or future..."
+          placeholder={placeholder}
           aria-label="Ticker lookup"
-          className="h-10 w-full rounded-lg border border-terminal-line bg-terminal-panel pl-10 pr-3 text-sm text-terminal-text outline-none transition placeholder:text-terminal-muted focus:border-terminal-cyan/70"
+          className={cn(
+            "w-full rounded-xl border border-terminal-line bg-terminal-panel pl-11 pr-4 text-terminal-text outline-none transition placeholder:text-terminal-muted focus:border-terminal-cyan/70 focus:shadow-[0_0_0_4px_rgba(37,99,235,0.12)]",
+            prominent ? "h-14 text-base" : "h-10 text-sm"
+          )}
         />
       </form>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -52,7 +68,7 @@ export function LiveMarketSearch() {
             key={item.symbol}
             type="button"
             onClick={() => submitSymbol(item.symbol)}
-            className="inline-flex items-center gap-2 rounded-full border border-terminal-line bg-terminal-panel2 px-2.5 py-1 text-left text-xs transition hover:border-terminal-cyan/35 hover:text-terminal-cyan"
+            className="inline-flex items-center gap-2 rounded-full border border-terminal-line bg-terminal-panel2 px-3 py-1.5 text-left text-xs transition hover:border-terminal-cyan/35 hover:text-terminal-cyan"
           >
             <span className="font-mono font-semibold">{item.symbol}</span>
             <span className="text-terminal-muted">{item.name}</span>
@@ -62,7 +78,7 @@ export function LiveMarketSearch() {
           </button>
         ))}
       </div>
-      <p className="mt-3 text-xs text-terminal-muted">Examples: NVDA, MU, AMD, PLTR, QQQ, SPY, ES, NQ, CL, GC, ZN</p>
+      <p className="mt-3 text-xs text-terminal-muted">{examples}</p>
     </section>
   );
 }
