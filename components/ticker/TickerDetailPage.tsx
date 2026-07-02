@@ -1,5 +1,4 @@
 import { DataTable, type Column } from "@/components/DataTable";
-import { AIInsight } from "@/components/AIInsight";
 import { InteractivePriceChart } from "@/components/InteractivePriceChart";
 import { SimpleLocalTime } from "@/components/LocalTime";
 import { MetricCard } from "@/components/MetricCard";
@@ -20,7 +19,6 @@ import {
   fetchRealTickerNews,
   type NormalizedNewsArticle
 } from "@/lib/provider-gateway";
-import { fetchTickerNews, generateSourceGroundedAnalysis } from "@/lib/research-engine";
 import { fetchPeers, fetchTickerOverview, type AssetType, type ETFProfile, type FutureProfile } from "@/lib/ticker-service";
 
 type KeyStat = {
@@ -293,7 +291,7 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
           {detail.assetType === "future" && detail.futureProfile ? <FuturesDetails profile={detail.futureProfile} /> : detail.assetType === "ETF" && detail.etfProfile ? <ETFDetails profile={detail.etfProfile} /> : (
             <Panel
               title="Fundamentals"
-              action={<span className="text-xs text-terminal-muted">Hover metric names for beginner explanations</span>}
+              action={<span className="text-xs text-terminal-muted">Hover metric names for plain-language explanations</span>}
             >
               <p className="mb-3 text-xs leading-5 text-terminal-muted">
                 These business metrics help explain quality, growth, valuation, and balance sheet risk. Educational tool only. Not financial advice.
@@ -357,26 +355,6 @@ export async function TickerDetailPage({ symbol: rawSymbol }: { symbol: string }
               Peer data unavailable from configured providers.
             </div>
           )}
-        </Panel>
-
-        <AIInsight
-          title={`${detail.symbol} StockerView Insight`}
-          analysis={generateSourceGroundedAnalysis({
-            id: `ticker-${detail.symbol}`,
-            title: `${detail.symbol} Source-Grounded Research`,
-            topic: `${detail.name} price action, trend context, key stats, earnings coverage, peer comparison and news context`,
-            sources: fetchTickerNews(detail.symbol),
-            missingData: detail.unavailableFields,
-            confidence: detail.unavailableFields.length ? "Low" : "Medium",
-            dataCompleteness: detail.unavailableFields.length ? 56 : 84
-          })}
-        />
-
-        <Panel title="Investing vs Gambling">
-          <p className="text-sm leading-6 text-terminal-text">
-            StockerView is built to help people understand what they are investing in before putting money at risk. Gambling is usually a short-term bet with little research. Investing still has risk, but research, patience, diversification, and discipline can help people make better decisions.
-          </p>
-          <p className="mt-3 text-xs leading-5 text-terminal-muted">Educational tool only. Not financial advice.</p>
         </Panel>
 
       </div>
@@ -702,20 +680,14 @@ function BeginnerTopInsight({ detail }: { detail: TickerDetail }) {
   return (
     <Panel
       title={`${detail.symbol} Why This Stock Matters`}
-      action={<span className="text-xs text-terminal-muted">StockerView Beginner Insight</span>}
+      action={<span className="text-xs text-terminal-muted">StockerView Insight</span>}
     >
       <div className="grid gap-3">
-        <InsightBlock title="Simple answer" text={profile.simpleAnswer} />
-        <div className="grid gap-3 xl:grid-cols-2">
-          <InsightListBlock title="What looks good" items={profile.whatLooksGood} tone="good" />
-          <InsightListBlock title="What looks risky" items={profile.whatLooksRisky} tone="risk" />
-        </div>
-        <InsightBlock title="Why might it be moving?" text={profile.whyMoving} />
-        <InsightBlock title="Should I research now or wait?" text={profile.researchOrWait} />
+        <InsightBlock title="Simple Answer" text={profile.simpleAnswer} label={profile.simpleLabel} />
         <div className="rounded-xl border border-terminal-line bg-terminal-panel2 p-3">
-          <div className="text-xs font-medium uppercase tracking-[0.08em] text-terminal-muted">Beginner checklist</div>
+          <div className="text-xs font-medium uppercase tracking-[0.08em] text-terminal-muted">Quick reasons</div>
           <ul className="mt-2 space-y-1.5">
-            {profile.beginnerChecklist.map((item) => (
+            {profile.quickReasons.map((item) => (
               <li key={item} className="text-sm leading-6 text-terminal-text">
                 <span className="mr-2 text-terminal-cyan">-</span>
                 {item}
@@ -723,23 +695,63 @@ function BeginnerTopInsight({ detail }: { detail: TickerDetail }) {
             ))}
           </ul>
         </div>
-        <div className="grid gap-3 xl:grid-cols-2">
-          <InsightListBlock title="What would make this stronger" items={profile.whatImproves} tone="neutral" />
-          <InsightListBlock title="What would make this weaker" items={profile.whatWeakens} tone="neutral" />
-        </div>
+
+        <details className="rounded-xl border border-terminal-line bg-terminal-panel2 p-3">
+          <summary className="inline-flex cursor-pointer items-center rounded-md border border-terminal-line bg-terminal-panel px-3 py-1.5 text-xs text-terminal-text hover:border-terminal-cyan/30">
+            Expand insight
+          </summary>
+          <div className="mt-3 grid gap-3">
+            <InsightBlock title="Why It May Be Moving" text={profile.whyMoving} />
+            <div className="grid gap-3 xl:grid-cols-2">
+              <InsightListBlock title="What Looks Positive" items={profile.whatLooksGood} tone="good" />
+              <InsightListBlock title="What Looks Concerning" items={profile.whatLooksRisky} tone="risk" />
+            </div>
+            <InsightBlock title="Look Now or Wait?" text={profile.researchOrWait} />
+            <div className="rounded-xl border border-terminal-line bg-terminal-panel p-3">
+              <div className="text-xs font-medium uppercase tracking-[0.08em] text-terminal-muted">Before You Decide</div>
+              <ul className="mt-2 space-y-1.5">
+                {profile.beforeYouDecide.map((item) => (
+                  <li key={item} className="text-sm leading-6 text-terminal-text">
+                    <span className="mr-2 text-terminal-cyan">-</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <InsightListBlock title="What would make this stronger" items={profile.whatImproves} tone="neutral" />
+              <InsightListBlock title="What would make this weaker" items={profile.whatWeakens} tone="neutral" />
+            </div>
+          </div>
+        </details>
         <p className="text-xs leading-5 text-terminal-muted">Educational tool only. Not financial advice.</p>
       </div>
     </Panel>
   );
 }
 
-function InsightBlock({ title, text }: { title: string; text: string }) {
+function InsightBlock({ title, text, label }: { title: string; text: string; label?: string }) {
   return (
     <div className="rounded-xl border border-terminal-line bg-terminal-panel2 p-3">
-      <div className="text-xs font-medium uppercase tracking-[0.08em] text-terminal-muted">{title}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-medium uppercase tracking-[0.08em] text-terminal-muted">{title}</div>
+        {label ? <SimpleTonePill label={label} /> : null}
+      </div>
       <p className="mt-2 text-sm leading-6 text-terminal-text">{text}</p>
     </div>
   );
+}
+
+function SimpleTonePill({ label }: { label: string }) {
+  const normalized = label.toLowerCase();
+  const tone = normalized.includes("strong")
+    ? "border-terminal-green/25 text-terminal-green"
+    : normalized.includes("mixed") || normalized.includes("watch")
+      ? "border-terminal-cyan/25 text-terminal-cyan"
+      : normalized.includes("risk") || normalized.includes("data")
+        ? "border-terminal-amber/25 text-terminal-amber"
+        : "border-terminal-line text-terminal-text";
+  return <span className={`inline-flex rounded-md border px-2.5 py-1 text-xs ${tone}`}>{label}</span>;
 }
 
 function InsightListBlock({ title, items, tone }: { title: string; items: string[]; tone: "good" | "risk" | "neutral" }) {
@@ -760,63 +772,88 @@ function InsightListBlock({ title, items, tone }: { title: string; items: string
 }
 
 function beginnerInsightData(detail: TickerDetail) {
-  const profile = findFundamental(detail.fundamentals, "Description") || detail.name;
-  const trendRead = trendSummary(detail);
+  const companyDescription = findFundamental(detail.fundamentals, "Description") || detail.name;
   const rsi = technicalValue(detail.technicals, "RSI");
   const relVol = technicalValue(detail.technicals, "Volume");
   const peerBeat = peerDirectionSummary(detail);
   const earningsSummary = latestEarningsSummary(detail);
   const ratingSummary = ratingsSummary(detail.ratings);
   const newsSummary = newsSummaryLine(detail.news);
+  const trendSummaryValue = trendDirectionSummary(detail);
+  const momentumSummaryValue = momentumSummary(detail);
+  const setupTone = simpleSetupLabel(detail);
 
-  const simpleAnswer = `${detail.symbol} is ${profile}. ${trendRead}. ${detail.change >= 0 ? "The stock is up today" : "The stock is down today"} ${formatChangeMagnitude(detail.change)}.`;
+  const simpleAnswer =
+    setupTone === "Looks strong"
+      ? `${detail.symbol} looks strong right now. ${companyDescription} and current trend/momentum signals are supportive, but risk is still present and needs monitoring.`
+      : setupTone === "Mixed"
+        ? `${detail.symbol} looks mixed right now. The business may look solid, but the stock setup is not clearly strong yet based on trend, momentum, and current news.`
+        : setupTone === "Worth watching"
+          ? `${detail.symbol} may be worth watching. Some signals look constructive, but confirmation from trend, earnings, and news would make the setup clearer.`
+          : setupTone === "Higher risk"
+            ? `${detail.symbol} looks higher risk right now. Price action and/or sentiment are weak, so a clearer setup may be needed before acting.`
+            : `${detail.symbol} does not have enough complete data for a clear read right now.`;
 
   const whatLooksGood = [
-    detail.revenueGrowth !== "Unavailable" ? `Revenue growth is ${detail.revenueGrowth}, which can signal rising business demand.` : "Revenue growth data is unavailable right now.",
-    detail.grossMargin !== "Unavailable" ? `Gross margin is ${detail.grossMargin}, which helps show pricing power and operating quality.` : "Gross margin data is unavailable right now.",
-    ratingSummary.positive,
+    detail.revenueGrowth !== "Unavailable" ? `Sales are growing (${detail.revenueGrowth}), which can mean demand is improving.` : "Revenue growth data is unavailable right now.",
+    detail.grossMargin !== "Unavailable" ? `Margins are ${detail.grossMargin}, which can mean the company keeps more money from each sale.` : "Gross margin data is unavailable right now.",
+    ratingSummary.positive.replace("Ratings consensus", "Analyst views").replace("Some analyst activity is available.", "Analyst coverage is available, but opinions can change quickly."),
     peerBeat.good
   ];
 
   const whatLooksRisky = [
-    detail.debtEquity !== "Unavailable" ? `Debt/Equity is ${detail.debtEquity}; higher leverage can increase downside risk during weak periods.` : "Debt/Equity data is unavailable, so balance-sheet risk is harder to judge.",
+    detail.debtEquity !== "Unavailable" ? `Debt/Equity is ${detail.debtEquity}; high debt can increase downside risk if results weaken.` : "Debt data is missing, so balance-sheet risk is harder to judge.",
     ratingSummary.risk,
-    trendRiskLine(detail),
+    trendRiskLine(detail).replace("20D", "short-term").replace("50D", "medium-term").replace("200D", "long-term"),
     peerBeat.risk
   ];
 
   const whyMoving = [
-    `${detail.change >= 0 ? "Price is rising" : "Price is falling"} by ${formatChangeMagnitude(detail.change)} today.`,
-    relVol !== "Unavailable" ? `Trading volume is ${relVol}, which helps show whether the move has strong participation.` : "Relative volume data is unavailable, so move strength is harder to confirm.",
-    rsi !== "Unavailable" ? `RSI is ${rsi}, a momentum gauge where around 50 is neutral, high values can be overheated, and low values can be weak.` : "RSI is unavailable, so momentum direction is less clear.",
+    `${detail.change >= 0 ? "Price is up" : "Price is down"} ${formatChangeMagnitude(detail.change)} today, and ${volumeSummary(relVol)}.`,
+    trendSummaryValue,
+    momentumSummaryValue,
     newsSummary,
-    earningsSummary
+    earningsSummary,
+    ratingMoveLine(detail.ratings),
+    peerMoveLine(detail)
   ].join(" ");
+
+  const quickReasons = [
+    trendSummaryValue,
+    momentumSummaryValue,
+    newsSummary
+  ].map((reason) => compactReason(reason));
 
   const mixedSignal = detail.opportunityAnalysis.label === "Mixed setup" || detail.opportunityAnalysis.label === "Weak setup" || detail.opportunityAnalysis.label === "Poor setup";
   const researchOrWait = mixedSignal
-    ? "Based on available data, this looks like a mixed setup. A beginner may want to watch whether price improves above key moving averages or whether earnings/news confirms strength before making a decision. Waiting for a better setup may make sense."
-    : "Based on available data, this setup looks more constructive, but it still has risk. This may be worth researching, and a beginner may still want confirmation from trend, earnings, and news before deciding.";
+    ? "This looks mixed. It may make sense to watch whether price and momentum improve before making a decision."
+    : setupTone === "Looks strong"
+      ? "This looks stronger, but it is still important to compare valuation, earnings, and recent news before deciding."
+      : setupTone === "Higher risk"
+        ? "This looks higher risk right now. Waiting for clearer price strength or better news may make sense."
+        : "This may be worth watching. A clearer trend and more supportive updates would improve confidence.";
 
-  const beginnerChecklist = [
-    "Understand what the company sells and why customers choose it.",
-    "Check trend: is price above or below key moving averages?",
-    "Check growth and margins in fundamentals, not just price action.",
-    "Review latest earnings and company-specific news.",
-    "Compare with peers so you know if strength is company-specific or sector-wide.",
-    "Use position sizing and diversification; do not rely on one stock."
+  const beforeYouDecide = [
+    "What does the company do?",
+    "Is revenue growing?",
+    "Is the company profitable?",
+    "Is the stock trending up or down?",
+    "Is recent news positive or negative?",
+    "Is it expensive compared with growth?",
+    "How does it compare with peers?",
+    "Are you comfortable with the risk?"
   ];
 
   const whatImproves = [
-    "Price holds above the 20-day and 50-day moving averages.",
-    "Volume confirms upward moves instead of fading.",
+    "Price holds above short-term and medium-term trend levels.",
+    "Trading activity supports up moves instead of fading.",
     "Earnings and revenue updates stay strong or improve.",
     "News flow remains constructive and company-specific."
   ];
 
   const whatWeakens = [
-    "Price loses key moving averages and fails to reclaim them.",
-    "Volume rises on down days more than up days.",
+    "Price falls below key trend levels and cannot recover.",
+    "Trading activity rises more on down days than up days.",
     "Earnings disappointments or weaker forward guidance.",
     "Negative company-specific news or broad peer/sector weakness."
   ];
@@ -827,10 +864,21 @@ function beginnerInsightData(detail: TickerDetail) {
     whatLooksRisky,
     whyMoving,
     researchOrWait,
-    beginnerChecklist,
+    beforeYouDecide,
     whatImproves,
-    whatWeakens
+    whatWeakens,
+    simpleLabel: setupTone,
+    quickReasons
   };
+}
+
+function compactReason(reason: string) {
+  return reason
+    .replace("The stock is ", "")
+    .replace("right now", "")
+    .replace("This may be related to", "May be related to")
+    .replace("company-specific", "company")
+    .trim();
 }
 
 function buildTechnicalWhy(detail: TickerDetail, indicator: TechnicalIndicator) {
@@ -838,16 +886,22 @@ function buildTechnicalWhy(detail: TickerDetail, indicator: TechnicalIndicator) 
   if (indicator.label.includes("RSI")) {
     const numeric = parseFirstNumber(value);
     const state = numeric === null ? "Data unavailable" : numeric > 70 ? "high" : numeric < 30 ? "low" : "near neutral";
-    return `RSI is ${value}. That is ${state}, which helps beginners judge momentum speed. ${indicator.signal}`;
+    return `RSI is ${value}. RSI is a momentum gauge. Around 50 is neutral. Current read looks ${state}.`;
   }
-  if (indicator.label.includes("MA")) {
-    return `${indicator.label} is ${value}. Moving averages smooth price to show trend direction. ${indicator.signal}.`; 
+  if (indicator.label.includes("20D MA")) {
+    return `Short-term trend level is ${value}. If price is above it, short-term trend is usually stronger.`;
+  }
+  if (indicator.label.includes("50D MA")) {
+    return `Medium-term trend level is ${value}. If price is above it, trend strength is usually improving.`;
+  }
+  if (indicator.label.includes("200D MA")) {
+    return `Long-term trend level is ${value}. This helps show the bigger trend direction.`;
   }
   if (indicator.label.includes("Volume")) {
-    return `Volume is ${value}. Higher relative volume can make a move more meaningful. ${indicator.signal}.`;
+    return `Trading activity is ${volumeSummary(value)}. Heavier activity can make a move more meaningful.`;
   }
   if (indicator.label.includes("MACD")) {
-    return `MACD is ${value}. This helps show whether momentum is improving or fading. ${indicator.signal}.`;
+    return `MACD is ${value}. This helps show whether momentum is improving or fading.`;
   }
   return `${indicator.signal}. This matters because it adds context beyond the raw price.`;
 }
@@ -891,7 +945,7 @@ function metricHelp(metric: string, value: string) {
     return `Price/Book compares stock price with accounting book value. It can help compare valuation across similar businesses. Current value: ${value}.`;
   }
   if (normalized === "average volume") {
-    return `Average volume shows typical trading activity. Higher liquidity can make entries and exits easier for beginners. Current value: ${value}.`;
+    return `Average volume shows typical trading activity. More liquidity can make entries and exits easier. Current value: ${value}.`;
   }
   return `${metric} helps describe business quality, growth, valuation, or risk. Current value: ${value}.`;
 }
@@ -912,6 +966,24 @@ function trendSummary(detail: TickerDetail) {
     return "Trend data is limited because moving averages are unavailable.";
   }
   return `Trend check: 20D MA ${ma20}, 50D MA ${ma50}, 200D MA ${ma200}`;
+}
+
+function trendDirectionSummary(detail: TickerDetail) {
+  const maSignals = detail.technicals.filter((item) => item.label.includes("MA")).map((item) => item.signal.toLowerCase());
+  if (!maSignals.length) return "Trend data is limited right now.";
+  const belowCount = maSignals.filter((signal) => signal.includes("below")).length;
+  if (belowCount >= 2) return "The stock is below key short- and medium-term trend levels, which can mean momentum is weak.";
+  if (belowCount === 1) return "Trend signals are mixed across short- and medium-term levels.";
+  return "The stock is holding above key trend levels, which supports a stronger setup.";
+}
+
+function momentumSummary(detail: TickerDetail) {
+  const rsiValue = technicalValue(detail.technicals, "RSI");
+  const rsi = parseFirstNumber(rsiValue);
+  if (rsi === null) return "Momentum data is limited right now.";
+  if (rsi > 70) return "Momentum looks hot right now. RSI is above 70, which can mean the move is stretched.";
+  if (rsi < 30) return "Momentum looks weak right now. RSI is below 30, which can happen during heavy selling.";
+  return "Momentum looks neutral right now. RSI is a momentum gauge, and around 50 is neutral.";
 }
 
 function trendRiskLine(detail: TickerDetail) {
@@ -937,17 +1009,25 @@ function ratingsSummary(ratings: NormalizedRatings) {
   };
 }
 
+function ratingMoveLine(ratings: NormalizedRatings) {
+  if (!ratings || ratings.status === "unavailable" || ratings.status === "error") return "Analyst update data is limited right now.";
+  const action = ratings.recentActions?.[0];
+  if (!action) return "No major recent analyst action was detected.";
+  return `Recent analyst update: ${[action.firm, action.action, action.rating].filter(Boolean).join(" ")}.`;
+}
+
 function latestEarningsSummary(detail: TickerDetail) {
   if (!detail.earnings.length) return "Earnings data is unavailable, so business momentum is harder to confirm.";
   const latest = detail.earnings[0];
-  return `Latest earnings row: ${latest.quarter}, revenue ${latest.revenue}, EPS ${latest.eps}, surprise ${latest.surprise}.`;
+  return `Latest earnings update: ${latest.quarter}, revenue ${latest.revenue}, EPS ${latest.eps}, surprise ${latest.surprise}.`;
 }
 
 function newsSummaryLine(news: RelatedNews[]) {
   if (!news.length) {
-    return "There is not enough data to explain today's move clearly. It may be due to broader market movement, sector movement, or news not captured by providers.";
+    return "There is no clear company-specific news explaining the move. This may be related to broader market or sector movement.";
   }
-  return `Recent ticker-specific news is available (${news.length} article${news.length === 1 ? "" : "s"}), which may be part of the move.`;
+  const latest = news[0];
+  return `Latest company-specific headline: ${latest.headline} (${latest.source}).`;
 }
 
 function peerDirectionSummary(detail: TickerDetail) {
@@ -975,6 +1055,29 @@ function peerDirectionSummary(detail: TickerDetail) {
 
 function technicalValue(technicals: TechnicalIndicator[], labelIncludes: string) {
   return technicals.find((item) => item.label.toLowerCase().includes(labelIncludes.toLowerCase()))?.value ?? "Unavailable";
+}
+
+function volumeSummary(relativeVolume: string) {
+  const numeric = parseFirstNumber(relativeVolume);
+  if (numeric === null) return "activity data is unavailable";
+  if (numeric >= 1.2) return "heavier than usual";
+  if (numeric < 0.9) return "lighter than usual";
+  return "around normal";
+}
+
+function peerMoveLine(detail: TickerDetail) {
+  if (!detail.peers.length) return "Peer movement data is limited right now.";
+  const rising = detail.peers.filter((peer) => peer.change > 0).length;
+  return `Peer group check: ${rising} of ${detail.peers.length} peers are up today.`;
+}
+
+function simpleSetupLabel(detail: TickerDetail) {
+  if (detail.opportunityAnalysis.label === "Limited data" || detail.opportunityAnalysis.score === null) return "Not enough data";
+  const score = detail.opportunityAnalysis.score;
+  if (score >= 75) return "Looks strong";
+  if (score >= 62) return "Worth watching";
+  if (score >= 50) return "Mixed";
+  return "Higher risk";
 }
 
 function findFundamental(rows: Fundamental[], metric: string) {
@@ -1103,15 +1206,6 @@ function OpportunityAnalysis({ analysis }: { analysis: OpportunityScoreResult })
           </div>
         </div>
       </div>
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <BulletBlock title="Why It Appears Interesting" items={analysis.drivers} />
-        <BulletBlock title="Why It May Be Down" items={analysis.whyDown} />
-        <BulletBlock title="What Could Help Recovery" items={analysis.recoveryCatalysts} />
-        <BulletBlock title="Main Risks" items={analysis.risks} />
-      </div>
-      <div className="mt-4">
-        <BulletBlock title="Catalyst Watch" items={analysis.catalystWatch.length ? analysis.catalystWatch : ["Not enough real data available for this signal."]} columns />
-      </div>
     </Panel>
   );
 }
@@ -1139,17 +1233,16 @@ function SignalCard({ signal }: { signal: OpportunityScoreResult["signalScores"]
 }
 
 function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][number]) {
-  const low = signal.detail.toLowerCase();
+  const plainDetail = simplifySetupDetail(signal);
   const score = signal.score;
   const strong = typeof score === "number" && score >= 70;
   const mixed = typeof score === "number" && score >= 50 && score < 70;
-  const weak = typeof score === "number" && score < 50;
 
   if (signal.status === "unavailable" || score === null) {
     return {
       simpleLabel: "Limited data",
-      whatItMeans: signal.detail,
-      whyItMatters: "When this signal is missing, conviction is lower and beginners should lean on risk control.",
+      whatItMeans: plainDetail,
+      whyItMatters: "When this signal is missing, confidence is lower.",
       whatImproves: "Wait for fresh provider data for this signal before making decisions."
     };
   }
@@ -1157,16 +1250,16 @@ function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][numbe
   if (signal.label === "Trend") {
     return {
       simpleLabel: strong ? "Trend looks stronger" : mixed ? "Trend looks mixed" : "Trend looks weak",
-      whatItMeans: `${signal.detail} Moving averages help show whether price is in an improving or weakening trend.`,
-      whyItMatters: "Beginners often do better avoiding names with clearly weak trends unless they have a strong reason and risk plan.",
-      whatImproves: "Price reclaiming and holding above 20D/50D averages with stable volume."
+      whatItMeans: plainDetail,
+      whyItMatters: "Trend helps show whether price strength is building or fading.",
+      whatImproves: "Price reclaiming and holding above short- and medium-term trend levels with stable activity."
     };
   }
 
   if (signal.label === "Momentum") {
     return {
       simpleLabel: strong ? "Momentum is supportive" : mixed ? "Momentum is neutral" : "Momentum is soft",
-      whatItMeans: `${signal.detail} RSI around 50 is usually neutral, while extremes can mean heat or weakness.`,
+      whatItMeans: plainDetail,
       whyItMatters: "Momentum helps explain if buyers or sellers are currently in control.",
       whatImproves: "RSI stabilizing in healthy ranges and short-term performance improving."
     };
@@ -1175,7 +1268,7 @@ function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][numbe
   if (signal.label === "Volume") {
     return {
       simpleLabel: strong ? "Participation looks strong" : mixed ? "Participation is normal" : "Participation looks weak",
-      whatItMeans: `${signal.detail} Volume helps show whether price moves have broad participation.`,
+      whatItMeans: plainDetail,
       whyItMatters: "Big moves with weak volume can fail faster than moves supported by stronger volume.",
       whatImproves: "Higher relative volume on up moves and lighter volume on pullbacks."
     };
@@ -1184,7 +1277,7 @@ function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][numbe
   if (signal.label === "Valuation") {
     return {
       simpleLabel: strong ? "Valuation looks more reasonable" : mixed ? "Valuation looks balanced" : "Valuation looks expensive",
-      whatItMeans: `${signal.detail} Ratios like P/E compare price with business performance.`,
+      whatItMeans: plainDetail,
       whyItMatters: "If valuation is too stretched, the stock may need very strong growth to justify the price.",
       whatImproves: "Either better earnings growth or a more reasonable entry valuation."
     };
@@ -1193,7 +1286,7 @@ function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][numbe
   if (signal.label === "Growth/Fundamentals") {
     return {
       simpleLabel: strong ? "Business quality looks strong" : mixed ? "Business quality looks mixed" : "Business quality looks weak",
-      whatItMeans: signal.detail,
+      whatItMeans: plainDetail,
       whyItMatters: "Long-term returns are often tied to real business results, not only short-term price action.",
       whatImproves: "Stronger revenue, EPS, margins, and cash-flow trends in future reports."
     };
@@ -1202,7 +1295,7 @@ function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][numbe
   if (signal.label === "News/Sentiment") {
     return {
       simpleLabel: strong ? "News flow is supportive" : mixed ? "News flow is mixed" : "News flow is thin or negative",
-      whatItMeans: `${signal.detail} News can drive short-term direction, especially around earnings and guidance.`,
+      whatItMeans: plainDetail,
       whyItMatters: "Without clear company-specific news, price moves may be mostly market or sector driven.",
       whatImproves: "Consistent positive company-specific updates with clear business impact."
     };
@@ -1211,7 +1304,7 @@ function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][numbe
   if (signal.label === "Ratings") {
     return {
       simpleLabel: strong ? "Analyst view is constructive" : mixed ? "Analyst view is mixed" : "Analyst view is cautious",
-      whatItMeans: `${signal.detail} Analyst views can influence expectations but are not guarantees.`,
+      whatItMeans: plainDetail,
       whyItMatters: "Shifts in consensus or price targets can move sentiment quickly.",
       whatImproves: "Upgrades, stronger consensus, and better earnings execution."
     };
@@ -1220,20 +1313,77 @@ function explainSetupSignal(signal: OpportunityScoreResult["signalScores"][numbe
   if (signal.label === "Risk") {
     return {
       simpleLabel: strong ? "Risk looks more controlled" : mixed ? "Risk looks moderate" : "Risk looks elevated",
-      whatItMeans: `${signal.detail} Volatility and range behavior help estimate downside swings.`,
-      whyItMatters: "Higher volatility can make it harder for beginners to stick to a plan.",
+      whatItMeans: plainDetail,
+      whyItMatters: "Higher volatility can make outcomes less predictable.",
       whatImproves: "Lower volatility, steadier trend structure, and cleaner earnings/news follow-through."
     };
   }
 
   return {
     simpleLabel: strong ? "Signal looks stronger" : mixed ? "Signal looks mixed" : "Signal looks weak",
-    whatItMeans: signal.detail,
-    whyItMatters: low.includes("unavailable")
-      ? "Missing data lowers confidence and increases uncertainty."
-      : "This signal adds context beyond price-only movement.",
+    whatItMeans: plainDetail,
+    whyItMatters: "This signal adds context beyond price-only movement.",
     whatImproves: "Wait for stronger confirmation from trend, earnings, and news."
   };
+}
+
+function simplifySetupDetail(signal: OpportunityScoreResult["signalScores"][number]) {
+  const detail = signal.detail;
+
+  if (signal.label === "Trend") {
+    const normalized = detail
+      .replace(/20D/g, "short-term")
+      .replace(/50D/g, "medium-term")
+      .replace(/200D/g, "long-term")
+      .replace("available moving averages", "trend levels");
+    return `${normalized} This shows whether trend direction is improving or weakening.`;
+  }
+
+  if (signal.label === "Momentum") {
+    const rsiMatch = detail.match(/RSI is\s*(-?\d+(?:\.\d+)?)/i);
+    const rsi = rsiMatch ? Number(rsiMatch[1]) : null;
+    const rsiText = rsi === null
+      ? "Momentum read is limited."
+      : rsi > 70
+        ? `RSI is ${rsi.toFixed(1)}, which is high and can mean momentum is stretched.`
+        : rsi < 30
+          ? `RSI is ${rsi.toFixed(1)}, which is low and can mean heavy selling pressure.`
+          : `RSI is ${rsi.toFixed(1)}. RSI is a momentum gauge, and around 50 is neutral.`;
+    return `${rsiText} Short-term and medium-term performance also feed this score.`;
+  }
+
+  if (signal.label === "Volume") {
+    const match = detail.match(/Relative volume is\s*(-?\d+(?:\.\d+)?)x/i);
+    const volume = match ? Number(match[1]) : null;
+    const state = volume === null ? "activity data is limited" : volume >= 1.2 ? "heavier than usual" : volume < 0.9 ? "lighter than usual" : "around normal";
+    return `Trading activity is ${state}. This helps show whether moves have broad participation.`;
+  }
+
+  if (signal.label === "Valuation") {
+    return detail.includes("ratio")
+      ? "Valuation ratios are available. This score compares price levels with business results to see if valuation looks stretched or reasonable."
+      : "Valuation data is limited right now.";
+  }
+
+  if (signal.label === "News/Sentiment") {
+    const countMatch = detail.match(/(\d+)\s+recent article/i);
+    const count = countMatch ? Number(countMatch[1]) : null;
+    return count === null
+      ? "News flow is limited right now."
+      : `There are ${count} recent company-specific article${count === 1 ? "" : "s"}. News flow can drive short-term moves.`;
+  }
+
+  if (signal.label === "Ratings") {
+    return detail
+      .replace(/Consensus:/gi, "Analyst consensus:")
+      .replace(/recent analyst action/gi, "recent analyst update");
+  }
+
+  if (signal.label === "Risk") {
+    return detail.replace("provider day range", "recent day range");
+  }
+
+  return detail;
 }
 
 function RatingsSignalDetails({ ratings }: { ratings?: NormalizedRatings }) {
